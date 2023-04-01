@@ -9,6 +9,7 @@ package v8go
 #include "v8go.h"
 */
 import "C"
+
 import (
 	"time"
 	"unsafe"
@@ -75,8 +76,8 @@ func (c *CPUProfiler) StopProfiling(title string) *CPUProfile {
 
 func newCPUProfileNode(node *C.CPUProfileNode, parent *CPUProfileNode) *CPUProfileNode {
 	n := &CPUProfileNode{
-		nodeId:             int(node.nodeId),
-		scriptId:           int(node.scriptId),
+		nodeID:             int(node.nodeId),
+		scriptID:           int(node.scriptId),
 		scriptResourceName: C.GoString(node.scriptResourceName),
 		functionName:       C.GoString(node.functionName),
 		lineNumber:         int(node.lineNumber),

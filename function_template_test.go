@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"testing"
 
-	v8 "rogchap.com/v8go"
+	v8 "github.com/katallaxie/v8go"
 )
 
 func TestFunctionTemplate(t *testing.T) {
@@ -48,6 +48,7 @@ func TestFunctionTemplate_panic_on_nil_callback(t *testing.T) {
 	defer iso.Dispose()
 	v8.NewFunctionTemplate(iso, nil)
 }
+
 func TestFunctionTemplate_generates_values(t *testing.T) {
 	t.Parallel()
 

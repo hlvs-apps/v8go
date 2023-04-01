@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"testing"
 
-	v8 "rogchap.com/v8go"
+	v8 "github.com/katallaxie/v8go"
 )
 
 func TestObjectMethodCall(t *testing.T) {
@@ -199,7 +199,6 @@ func TestObjectDelete(t *testing.T) {
 	if !obj.DeleteIdx(2) {
 		t.Error("expected delete to return true, got false")
 	}
-
 }
 
 func ExampleObject_global() {

@@ -17,10 +17,11 @@ import "C"
 // These imports forces `go mod vendor` to pull in all the folders that
 // contain V8 libraries and headers which otherwise would be ignored.
 // DO NOT REMOVE
+// nolint:revive
 import (
-	_ "rogchap.com/v8go/deps/darwin_arm64"
-	_ "rogchap.com/v8go/deps/darwin_x86_64"
-	_ "rogchap.com/v8go/deps/include"
-	_ "rogchap.com/v8go/deps/linux_arm64"
-	_ "rogchap.com/v8go/deps/linux_x86_64"
+	_ "github.com/katallaxie/v8go/deps/darwin_arm64"
+	_ "github.com/katallaxie/v8go/deps/darwin_x86_64"
+	_ "github.com/katallaxie/v8go/deps/include"
+	_ "github.com/katallaxie/v8go/deps/linux_arm64"
+	_ "github.com/katallaxie/v8go/deps/linux_x86_64"
 )

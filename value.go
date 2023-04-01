@@ -7,6 +7,7 @@ package v8go
 // #include <stdlib.h>
 // #include "v8go.h"
 import "C"
+
 import (
 	"errors"
 	"fmt"
@@ -54,13 +55,14 @@ func Null(iso *Isolate) *Value {
 }
 
 // NewValue will create a primitive value. Supported values types to create are:
-//   string -> V8::String
-//   int32 -> V8::Integer
-//   uint32 -> V8::Integer
-//   int64 -> V8::BigInt
-//   uint64 -> V8::BigInt
-//   bool -> V8::Boolean
-//   *big.Int -> V8::BigInt
+//
+//	string -> V8::String
+//	int32 -> V8::Integer
+//	uint32 -> V8::Integer
+//	int64 -> V8::BigInt
+//	uint64 -> V8::BigInt
+//	bool -> V8::Boolean
+//	*big.Int -> V8::BigInt
 func NewValue(iso *Isolate, val interface{}) (*Value, error) {
 	if iso == nil {
 		return nil, errors.New("v8go: failed to create new Value: Isolate cannot be <nil>")
@@ -124,7 +126,7 @@ func NewValue(iso *Isolate, val interface{}) (*Value, error) {
 		bits := v.Bits()
 		count = len(bits)
 
-		words := make([]C.uint64_t, count, count)
+		words := make([]C.uint64_t, count)
 		for idx, word := range bits {
 			words[idx] = C.uint64_t(word)
 		}
@@ -144,12 +146,12 @@ func (v *Value) Format(s fmt.State, verb rune) {
 	switch verb {
 	case 'v':
 		if s.Flag('+') {
-			io.WriteString(s, v.DetailString())
+			io.WriteString(s, v.DetailString()) // nolint:errcheck
 			return
 		}
 		fallthrough
 	case 's':
-		io.WriteString(s, v.String())
+		io.WriteString(s, v.String()) // nolint:errcheck
 	case 'q':
 		fmt.Fprintf(s, "%q", v.String())
 	}
@@ -241,7 +243,7 @@ func (v *Value) Object() *Object {
 func (v *Value) String() string {
 	s := C.ValueToString(v.ptr)
 	defer C.free(unsafe.Pointer(s.data))
-	return C.GoStringN(s.data, C.int(s.length))
+	return C.GoStringN(s.data, s.length)
 }
 
 // Uint32 perform the equivalent of `Number(value)` in JS and convert the result to an

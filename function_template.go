@@ -7,6 +7,7 @@ package v8go
 // #include <stdlib.h>
 // #include "v8go.h"
 import "C"
+
 import (
 	"runtime"
 	"unsafe"
@@ -83,6 +84,7 @@ func (tmpl *FunctionTemplate) GetFunction(ctx *Context) *Function {
 
 // Note that ideally `thisAndArgs` would be split into two separate arguments, but they were combined
 // to workaround an ERROR_COMMITMENT_LIMIT error on windows that was detected in CI.
+//
 //export goFunctionCallback
 func goFunctionCallback(ctxref int, cbref int, thisAndArgs *C.ValuePtr, argsCount int) C.ValuePtr {
 	ctx := getContext(ctxref)
