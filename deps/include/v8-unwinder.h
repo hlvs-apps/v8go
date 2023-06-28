@@ -33,7 +33,7 @@ struct V8_EXPORT RegisterState {
 };
 
 // A StateTag represents a possible state of the VM.
-enum StateTag : uint16_t {
+enum StateTag : int {
   JS,
   GC,
   PARSER,

@@ -88,13 +88,10 @@ class V8_EXPORT SnapshotCreator {
    * \param existing_blob existing snapshot from which to create this one.
    * \param external_references a null-terminated array of external references
    *        that must be equivalent to CreateParams::external_references.
-   * \param owns_isolate whether this SnapshotCreator should call
-   *        v8::Isolate::Dispose() during its destructor.
    */
   SnapshotCreator(Isolate* isolate,
                   const intptr_t* external_references = nullptr,
-                  const StartupData* existing_blob = nullptr,
-                  bool owns_isolate = true);
+                  StartupData* existing_blob = nullptr);
 
   /**
    * Create and enter an isolate, and set it up for serialization.
@@ -105,7 +102,7 @@ class V8_EXPORT SnapshotCreator {
    *        that must be equivalent to CreateParams::external_references.
    */
   SnapshotCreator(const intptr_t* external_references = nullptr,
-                  const StartupData* existing_blob = nullptr);
+                  StartupData* existing_blob = nullptr);
 
   /**
    * Destroy the snapshot creator, and exit and dispose of the Isolate
@@ -182,12 +179,16 @@ class V8_EXPORT SnapshotCreator {
 
 template <class T>
 size_t SnapshotCreator::AddData(Local<Context> context, Local<T> object) {
-  return AddData(context, internal::ValueHelper::ValueAsAddress(*object));
+  T* object_ptr = *object;
+  internal::Address* p = reinterpret_cast<internal::Address*>(object_ptr);
+  return AddData(context, *p);
 }
 
 template <class T>
 size_t SnapshotCreator::AddData(Local<T> object) {
-  return AddData(internal::ValueHelper::ValueAsAddress(*object));
+  T* object_ptr = *object;
+  internal::Address* p = reinterpret_cast<internal::Address*>(object_ptr);
+  return AddData(*p);
 }
 
 }  // namespace v8
