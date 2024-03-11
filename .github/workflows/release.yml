@@ -20,7 +20,7 @@ jobs:
         run: echo "::set-output name=tag::${GITHUB_REF/refs\/tags\//}"
       - id: changelog
         run: echo "${{ steps.version.outputs.tag }}---$(date +'%Y-%m-%d')" | sed -e 's/\.//g' | awk '{print "::set-output name=url::https://github.com/katallaxie/v8go/blob/main/CHANGELOG.md#" $1}'
-      - uses: softprops/action-gh-release@v1
+      - uses: softprops/action-gh-release@v2
         with:
           draft: true
           prerelease: false
