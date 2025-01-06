@@ -3,7 +3,7 @@ module github.com/katallaxie/v8go/tools
 go 1.20
 
 require (
-	github.com/golangci/golangci-lint v1.63.3
+	github.com/golangci/golangci-lint v1.63.4
 	gotest.tools/gotestsum v1.12.0
 	mvdan.cc/gofumpt v0.7.0
 )
