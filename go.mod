@@ -1,10 +1,11 @@
 module github.com/katallaxie/v8go
 
 go 1.20
+toolchain go1.24.1
 
 require (
 	github.com/golang/mock v1.6.0
-	github.com/golangci/golangci-lint v1.64.7
+	github.com/golangci/golangci-lint v1.64.8
 	mvdan.cc/gofumpt v0.7.0
 )
 
