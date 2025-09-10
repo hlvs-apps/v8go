@@ -8,7 +8,6 @@ import (
 	// #include <stdlib.h>
 	// #include "v8go.h"
 	"C"
-
 	"fmt"
 	"unsafe"
 )

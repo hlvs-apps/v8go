@@ -7,6 +7,7 @@ package v8go
 // #include <stdlib.h>
 // #include "context.h"
 import "C"
+
 import (
 	"runtime"
 	"sync"
@@ -21,9 +22,11 @@ type ctxRef struct {
 	refCount int
 }
 
-var ctxMutex sync.RWMutex
-var ctxRegistry = make(map[int]*ctxRef)
-var ctxSeq = 0
+var (
+	ctxMutex    sync.RWMutex
+	ctxRegistry = make(map[int]*ctxRef)
+	ctxSeq      = 0
+)
 
 // Context is a global root execution environment that allows separate,
 // unrelated, JavaScript applications to run in a single instance of V8.

@@ -7,6 +7,7 @@ package v8go
 // #include <stdlib.h>
 // #include "json.h"
 import "C"
+
 import (
 	"errors"
 	"unsafe"

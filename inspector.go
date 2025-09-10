@@ -2,6 +2,7 @@ package v8go
 
 // #include "inspector.h"
 import "C"
+
 import (
 	"runtime/cgo"
 	"strconv"

@@ -29,7 +29,6 @@ func TestValueNewBaseCases(t *testing.T) {
 	if _, err := v8.NewValue(iso, struct{}{}); err == nil {
 		t.Error("expected error, but got <nil>")
 	}
-
 }
 
 func TestValueFormatting(t *testing.T) {
@@ -521,7 +520,6 @@ func TestValuePromise(t *testing.T) {
 	if _, err := ctx.RunScript("new Promise(()=>{})", ""); err != nil {
 		t.Errorf("Unexpected error: %v", err)
 	}
-
 }
 
 func TestValueAsException(t *testing.T) {
@@ -542,7 +540,6 @@ func TestValueAsException(t *testing.T) {
 	if _, err := val.AsException(); err != nil {
 		t.Errorf("Expected success but got: %v", err)
 	}
-
 }
 
 func TestValueFunction(t *testing.T) {
@@ -563,7 +560,6 @@ func TestValueFunction(t *testing.T) {
 	if _, err := val.AsFunction(); err != nil {
 		t.Errorf("Expected success but got: %v", err)
 	}
-
 }
 
 func TestValueSameValue(t *testing.T) {
@@ -754,7 +750,6 @@ func TestValueMarshalJSON(t *testing.T) {
 			if !bytes.Equal(json, tt.expected) {
 				t.Errorf("unexpected JSON value: %s", string(json))
 			}
-
 		})
 	}
 }
@@ -776,7 +771,6 @@ func TestValueArrayBufferContents(t *testing.T) {
 			return buf;
 		})();
 	`, "test.js")
-
 	if err != nil {
 		t.Fatalf("failed to run script: %v", err)
 	}

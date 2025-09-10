@@ -49,6 +49,7 @@ func TestFunctionTemplate_panic_on_nil_callback(t *testing.T) {
 	defer iso.Dispose()
 	v8.NewFunctionTemplate(iso, nil)
 }
+
 func TestFunctionTemplate_generates_values(t *testing.T) {
 	t.Parallel()
 

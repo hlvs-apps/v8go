@@ -200,10 +200,10 @@ func TestObjectTemplateSetAccessorProperty_GetterAnSetter(t *testing.T) {
 	defer iso.Dispose()
 	var value *v8.Value
 
-	var get = v8.NewFunctionTemplate(iso, func(*v8.FunctionCallbackInfo) *v8.Value {
+	get := v8.NewFunctionTemplate(iso, func(*v8.FunctionCallbackInfo) *v8.Value {
 		return value
 	})
-	var set = v8.NewFunctionTemplate(iso, func(i *v8.FunctionCallbackInfo) *v8.Value {
+	set := v8.NewFunctionTemplate(iso, func(i *v8.FunctionCallbackInfo) *v8.Value {
 		value = i.Args()[0] // A property setter will always have _one_ argument.
 		return nil
 	})

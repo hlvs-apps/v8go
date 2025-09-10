@@ -7,6 +7,7 @@ package v8go
 // #include <stdlib.h>
 // #include "object.h"
 import "C"
+
 import (
 	"fmt"
 	"math/big"
@@ -97,7 +98,6 @@ func (o *Object) SetIdx(idx uint32, val interface{}) error {
 // Panics if the index isn't in the range set by (*ObjectTemplate).SetInternalFieldCount.
 func (o *Object) SetInternalField(idx uint32, val interface{}) error {
 	value, err := coerceValue(o.ctx.iso, val)
-
 	if err != nil {
 		return err
 	}
