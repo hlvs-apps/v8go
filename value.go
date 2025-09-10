@@ -146,12 +146,12 @@ func (v *Value) Format(s fmt.State, verb rune) {
 	switch verb {
 	case 'v':
 		if s.Flag('+') {
-			io.WriteString(s, v.DetailString()) // nolint:errcheck
+			io.WriteString(s, v.DetailString()) //nolint:errcheck
 			return
 		}
 		fallthrough
 	case 's':
-		io.WriteString(s, v.String()) // nolint:errcheck
+		io.WriteString(s, v.String()) //nolint:errcheck
 	case 'q':
 		fmt.Fprintf(s, "%q", v.String())
 	}

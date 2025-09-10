@@ -5,6 +5,7 @@
 package v8go_test
 
 import (
+	"errors"
 	"testing"
 
 	v8 "github.com/katallaxie/v8go"
@@ -104,10 +105,15 @@ func TestFunctionCallError(t *testing.T) {
 	if err == nil {
 		t.Errorf("expected an error, got none")
 	}
-	got := *(err.(*v8.JSError))
-	want := v8.JSError{Message: "error", Location: "script.js:1:21"}
-	if got != want {
-		t.Errorf("want %+v, got: %+v", want, got)
+	var v8Err *v8.JSError
+	if !errors.As(err, &v8Err) {
+		t.Errorf("expected error of type JSError, got %T", err)
+	}
+	if v8Err.Message != "error" {
+		t.Errorf("unexpected error message: %q", v8Err.Message)
+	}
+	if v8Err.Location != "script.js:1:21" {
+		t.Errorf("unexpected error location: %q", v8Err.Location)
 	}
 }
 
@@ -182,9 +188,14 @@ func TestFunctionNewInstanceError(t *testing.T) {
 	if err == nil {
 		t.Errorf("expected an error, got none")
 	}
-	got := *(err.(*v8.JSError))
-	want := v8.JSError{Message: "error", Location: "script.js:1:21"}
-	if got != want {
-		t.Errorf("want %+v, got: %+v", want, got)
+	var v8Err *v8.JSError
+	if !errors.As(err, &v8Err) {
+		t.Errorf("expected error of type JSError, got %T", err)
+	}
+	if v8Err.Message != "error" {
+		t.Errorf("unexpected error message: %q", v8Err.Message)
+	}
+	if v8Err.Location != "script.js:1:21" {
+		t.Errorf("unexpected error location: %q", v8Err.Location)
 	}
 }

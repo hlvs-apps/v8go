@@ -91,8 +91,10 @@ func (c *Context) RetainedValueCount() int {
 }
 
 // RunScript executes the source JavaScript; origin (a.k.a. filename) provides a
-// reference for the script and used in the stack trace if there is an error.
+// reference for the script and used in the stack trace if there is an error
 // error will be of type `JSError` if not nil.
+//
+//nolint:gofumpt
 func (c *Context) RunScript(source string, origin string) (*Value, error) {
 	cSource := C.CString(source)
 	cOrigin := C.CString(origin)

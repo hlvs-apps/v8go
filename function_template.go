@@ -86,7 +86,7 @@ func (tmpl *FunctionTemplate) GetFunction(ctx *Context) *Function {
 // to workaround an ERROR_COMMITMENT_LIMIT error on windows that was detected in CI.
 //
 //export goFunctionCallback
-func goFunctionCallback(ctxref int, cbref int, thisAndArgs *C.ValuePtr, argsCount int) C.ValuePtr {
+func goFunctionCallback(ctxref, cbref int, thisAndArgs *C.ValuePtr, argsCount int) C.ValuePtr {
 	ctx := getContext(ctxref)
 
 	this := *thisAndArgs

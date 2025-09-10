@@ -285,7 +285,7 @@ const script = `
 
 func makeObject() interface{} {
 	return map[string]interface{}{
-		"a": rand.Intn(1000000),
+		"a": rand.Intn(1000000), //nolint:gosec
 		"b": "AAAABBBBAAAABBBBAAAABBBBAAAABBBBAAAABBBB",
 	}
 }

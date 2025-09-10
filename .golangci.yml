@@ -44,6 +44,12 @@ linters:
     - usetesting
     - wastedassign
     - whitespace
+  
+  disable:
+    - errcheck
+    - revive
+    - mnd
+    - forbidigo
 
   settings:
     exhaustive:

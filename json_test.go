@@ -5,6 +5,7 @@
 package v8go_test
 
 import (
+	"errors"
 	"fmt"
 	"testing"
 
@@ -24,7 +25,8 @@ func TestJSONParse(t *testing.T) {
 		return
 	}
 
-	if _, ok := err.(*v8.JSError); !ok {
+	var v8Err *v8.JSError
+	if !errors.As(err, &v8Err) {
 		t.Errorf("expected error to be of type JSError, got: %T", err)
 	}
 }

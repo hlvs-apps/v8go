@@ -5,6 +5,7 @@
 package v8go_test
 
 import (
+	"errors"
 	"fmt"
 	"testing"
 
@@ -68,22 +69,23 @@ func TestJSErrorOutput(t *testing.T) {
 		t.Error("expected error but got <nil>")
 		return
 	}
-	e, ok := err.(*v8.JSError)
+	var v8Err *v8.JSError
+	ok := errors.As(err, &v8Err)
 	if !ok {
 		t.Errorf("expected error of type JSError, got %T", err)
 	}
-	if e.Message != "ReferenceError: c is not defined" {
-		t.Errorf("unexpected error message: %q", e.Message)
+	if v8Err.Message != "ReferenceError: c is not defined" {
+		t.Errorf("unexpected error message: %q", v8Err.Message)
 	}
-	if e.Location != "math.js:7:17" {
-		t.Errorf("unexpected error location: %q", e.Location)
+	if v8Err.Location != "math.js:7:17" {
+		t.Errorf("unexpected error location: %q", v8Err.Location)
 	}
 	expectedStack := `ReferenceError: c is not defined
     at addMore (math.js:7:17)
     at main.js:3:10`
 
-	if e.StackTrace != expectedStack {
-		t.Errorf("unexpected error stack trace: %q", e.StackTrace)
+	if v8Err.StackTrace != expectedStack {
+		t.Errorf("unexpected error stack trace: %q", v8Err.StackTrace)
 	}
 }
 
@@ -99,7 +101,10 @@ func TestJSErrorFormat_forSyntaxError(t *testing.T) {
 		let z = x + z;
 	`
 	_, err := ctx.RunScript(script, "xyz.js")
-	jsErr := err.(*v8.JSError)
+	var jsErr *v8.JSError
+	if !errors.As(err, &jsErr) {
+		t.Errorf("expected error of type JSError, got %T", err)
+	}
 	if jsErr.StackTrace != jsErr.Message {
 		t.Errorf("unexpected StackTrace %q not equal to Message %q", jsErr.StackTrace, jsErr.Message)
 	}

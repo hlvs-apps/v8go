@@ -496,9 +496,11 @@ func TestValueSameValue(t *testing.T) {
 	obj2, err := objTempl.NewInstance(ctx)
 	fatalIf(t, err)
 
+	//nolint:staticcheck
 	if obj1.Value.SameValue(obj2.Value) != false {
 		t.Errorf("SameValue on two different values didn't return false")
 	}
+	//nolint:staticcheck
 	if obj1.Value.SameValue(obj1.Value) != true {
 		t.Errorf("SameValue on two of the same value didn't return true")
 	}

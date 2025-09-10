@@ -11,6 +11,7 @@
 package v8go_test
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -31,7 +32,8 @@ func ExampleFunctionTemplate_fetch() {
 		resolver, _ := v8.NewPromiseResolver(info.Context())
 
 		go func() {
-			res, _ := http.Get(url)
+			req, _ := http.NewRequestWithContext(context.Background(), "GET", url, nil)
+			res, _ := http.DefaultClient.Do(req) //nolint:bodyclose
 			body, _ := io.ReadAll(res.Body)
 			val, _ := v8.NewValue(iso, string(body))
 			resolver.Resolve(val)

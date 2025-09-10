@@ -16,7 +16,7 @@ import (
 	"unsafe"
 )
 
-// Version returns the version of the V8 Engine with the -v8go suffix
+// Version returns the version of the V8 Engine with the -v8go suffix.
 func Version() string {
 	return C.GoString(C.Version())
 }

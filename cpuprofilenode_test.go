@@ -53,7 +53,7 @@ func TestCPUProfileNode(t *testing.T) {
 	if startNode == nil {
 		t.Fatal("expected node not to be nil")
 	}
-	checkNode(t, startNode, "script.js", "start", 23, 15)
+	checkNode(t, startNode, "start", 23, 15)
 
 	parentName := startNode.GetParent().GetFunctionName()
 	if parentName != "(root)" {
@@ -61,19 +61,19 @@ func TestCPUProfileNode(t *testing.T) {
 	}
 
 	fooNode := findChild(t, startNode, "foo")
-	checkNode(t, fooNode, "script.js", "foo", 15, 13)
+	checkNode(t, fooNode, "foo", 15, 13)
 
 	delayNode := findChild(t, fooNode, "delay")
-	checkNode(t, delayNode, "script.js", "delay", 12, 15)
+	checkNode(t, delayNode, "delay", 12, 15)
 
 	barNode := findChild(t, fooNode, "bar")
-	checkNode(t, barNode, "script.js", "bar", 13, 13)
+	checkNode(t, barNode, "bar", 13, 13)
 
 	loopNode := findChild(t, delayNode, "loop")
-	checkNode(t, loopNode, "script.js", "loop", 1, 14)
+	checkNode(t, loopNode, "loop", 1, 14)
 
 	bazNode := findChild(t, fooNode, "baz")
-	checkNode(t, bazNode, "script.js", "baz", 14, 13)
+	checkNode(t, bazNode, "baz", 14, 13)
 }
 
 func findChild(t *testing.T, node *v8.CPUProfileNode, functionName string) *v8.CPUProfileNode {
@@ -92,14 +92,14 @@ func findChild(t *testing.T, node *v8.CPUProfileNode, functionName string) *v8.C
 	return child
 }
 
-func checkNode(t *testing.T, node *v8.CPUProfileNode, scriptResourceName string, functionName string, line, column int) {
+func checkNode(t *testing.T, node *v8.CPUProfileNode, functionName string, line, column int) {
 	t.Helper()
 
 	if node.GetFunctionName() != functionName {
 		t.Fatalf("expected node to have function name %s, but got %s", functionName, node.GetFunctionName())
 	}
-	if node.GetScriptResourceName() != scriptResourceName {
-		t.Fatalf("expected node to have script resource name %s, but got %s", scriptResourceName, node.GetScriptResourceName())
+	if node.GetScriptResourceName() != "script.js" {
+		t.Fatalf("expected node to have script resource name %s, but got %s", "script.js", node.GetScriptResourceName())
 	}
 	if node.GetLineNumber() != line {
 		t.Fatalf("expected node at line %d, but got %d", line, node.GetLineNumber())
