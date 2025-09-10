@@ -12,8 +12,6 @@ import (
 )
 
 func TestFunctionTemplate(t *testing.T) {
-	t.Parallel()
-
 	iso := v8.NewIsolate()
 	defer iso.Dispose()
 	fn := v8.NewFunctionTemplate(iso, func(*v8.FunctionCallbackInfo) *v8.Value { return nil })
@@ -23,8 +21,6 @@ func TestFunctionTemplate(t *testing.T) {
 }
 
 func TestFunctionTemplate_panic_on_nil_isolate(t *testing.T) {
-	t.Parallel()
-
 	defer func() {
 		if err := recover(); err == nil {
 			t.Error("expected panic")
@@ -37,8 +33,6 @@ func TestFunctionTemplate_panic_on_nil_isolate(t *testing.T) {
 }
 
 func TestFunctionTemplate_panic_on_nil_callback(t *testing.T) {
-	t.Parallel()
-
 	defer func() {
 		if err := recover(); err == nil {
 			t.Error("expected panic")
@@ -50,8 +44,6 @@ func TestFunctionTemplate_panic_on_nil_callback(t *testing.T) {
 }
 
 func TestFunctionTemplate_generates_values(t *testing.T) {
-	t.Parallel()
-
 	iso := v8.NewIsolate()
 	defer iso.Dispose()
 	global := v8.NewObjectTemplate(iso)
@@ -69,8 +61,6 @@ func TestFunctionTemplate_generates_values(t *testing.T) {
 }
 
 func TestFunctionTemplate_releases_values(t *testing.T) {
-	t.Parallel()
-
 	iso := v8.NewIsolate()
 	defer iso.Dispose()
 	global := v8.NewObjectTemplate(iso)
@@ -90,8 +80,6 @@ func TestFunctionTemplate_releases_values(t *testing.T) {
 }
 
 func TestFunctionTemplateGetFunction(t *testing.T) {
-	t.Parallel()
-
 	iso := v8.NewIsolate()
 	defer iso.Dispose()
 	ctx := v8.NewContext(iso)
@@ -121,8 +109,6 @@ func TestFunctionTemplateGetFunction(t *testing.T) {
 }
 
 func TestFunctionCallbackInfoThis(t *testing.T) {
-	t.Parallel()
-
 	iso := v8.NewIsolate()
 	defer iso.Dispose()
 

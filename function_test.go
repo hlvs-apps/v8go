@@ -11,8 +11,6 @@ import (
 )
 
 func TestFunctionCall(t *testing.T) {
-	t.Parallel()
-
 	ctx := v8.NewContext()
 	iso := ctx.Isolate()
 	defer iso.Dispose()
@@ -36,8 +34,6 @@ func TestFunctionCall(t *testing.T) {
 }
 
 func TestFunctionCallToGoFunc(t *testing.T) {
-	t.Parallel()
-
 	iso := v8.NewIsolate()
 	defer iso.Dispose()
 	global := v8.NewObjectTemplate(iso)
@@ -70,8 +66,6 @@ func TestFunctionCallToGoFunc(t *testing.T) {
 }
 
 func TestFunctionCallWithObjectReceiver(t *testing.T) {
-	t.Parallel()
-
 	iso := v8.NewIsolate()
 	defer iso.Dispose()
 	global := v8.NewObjectTemplate(iso)
@@ -95,8 +89,6 @@ func TestFunctionCallWithObjectReceiver(t *testing.T) {
 }
 
 func TestFunctionCallError(t *testing.T) {
-	t.Parallel()
-
 	ctx := v8.NewContext()
 	iso := ctx.Isolate()
 	defer iso.Dispose()
@@ -120,8 +112,6 @@ func TestFunctionCallError(t *testing.T) {
 }
 
 func TestFunctionSourceMapUrl(t *testing.T) {
-	t.Parallel()
-
 	ctx := v8.NewContext()
 	defer ctx.Isolate().Dispose()
 	defer ctx.Close()
@@ -150,8 +140,6 @@ func TestFunctionSourceMapUrl(t *testing.T) {
 }
 
 func TestFunctionNewInstance(t *testing.T) {
-	t.Parallel()
-
 	ctx := v8.NewContext()
 	defer ctx.Isolate().Dispose()
 	defer ctx.Close()
@@ -180,8 +168,6 @@ func TestFunctionNewInstance(t *testing.T) {
 }
 
 func TestFunctionNewInstanceError(t *testing.T) {
-	t.Parallel()
-
 	ctx := v8.NewContext()
 	defer ctx.Isolate().Dispose()
 	defer ctx.Close()

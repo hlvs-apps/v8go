@@ -29,7 +29,7 @@ type PromiseResolver struct {
 	prom *Promise
 }
 
-// Promise is the JavaScript promise object defined in ES6
+// Promise is the JavaScript promise object defined in ES6.
 type Promise struct {
 	*Object
 }

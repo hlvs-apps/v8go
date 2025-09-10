@@ -13,7 +13,6 @@ import (
 )
 
 func TestContextExec(t *testing.T) {
-	t.Parallel()
 	ctx := v8.NewContext(nil)
 	defer ctx.Isolate().Dispose()
 	defer ctx.Close()
@@ -40,8 +39,6 @@ func TestContextExec(t *testing.T) {
 }
 
 func TestJSExceptions(t *testing.T) {
-	t.Parallel()
-
 	tests := [...]struct {
 		name   string
 		source string
@@ -57,7 +54,6 @@ func TestJSExceptions(t *testing.T) {
 	defer ctx.Close()
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			_, err := ctx.RunScript(tt.source, tt.origin)
 			if err == nil {
@@ -72,8 +68,6 @@ func TestJSExceptions(t *testing.T) {
 }
 
 func TestContextRegistry(t *testing.T) {
-	t.Parallel()
-
 	ctx := v8.NewContext()
 	defer ctx.Isolate().Dispose()
 	defer ctx.Close()
@@ -97,8 +91,6 @@ func TestContextRegistry(t *testing.T) {
 }
 
 func TestMemoryLeak(t *testing.T) {
-	t.Parallel()
-
 	iso := v8.NewIsolate()
 	defer iso.Dispose()
 
@@ -116,8 +108,6 @@ func TestMemoryLeak(t *testing.T) {
 
 // https://github.com/rogchap/v8go/issues/186
 func TestRegistryFromJSON(t *testing.T) {
-	t.Parallel()
-
 	iso := v8.NewIsolate()
 	defer iso.Dispose()
 

@@ -12,8 +12,6 @@ import (
 )
 
 func TestObjectMethodCall(t *testing.T) {
-	t.Parallel()
-
 	ctx := v8.NewContext()
 	iso := ctx.Isolate()
 	defer iso.Dispose()
@@ -46,8 +44,6 @@ func TestObjectMethodCall(t *testing.T) {
 }
 
 func TestObjectSet(t *testing.T) {
-	t.Parallel()
-
 	ctx := v8.NewContext()
 	defer ctx.Isolate().Dispose()
 	defer ctx.Close()
@@ -135,8 +131,6 @@ func TestObjectInternalFields(t *testing.T) {
 }
 
 func TestObjectGet(t *testing.T) {
-	t.Parallel()
-
 	ctx := v8.NewContext()
 	defer ctx.Isolate().Dispose()
 	defer ctx.Close()
@@ -158,8 +152,6 @@ func TestObjectGet(t *testing.T) {
 }
 
 func TestObjectHas(t *testing.T) {
-	t.Parallel()
-
 	ctx := v8.NewContext()
 	defer ctx.Isolate().Dispose()
 	defer ctx.Close()
@@ -180,8 +172,6 @@ func TestObjectHas(t *testing.T) {
 }
 
 func TestObjectDelete(t *testing.T) {
-	t.Parallel()
-
 	ctx := v8.NewContext()
 	defer ctx.Isolate().Dispose()
 	defer ctx.Close()

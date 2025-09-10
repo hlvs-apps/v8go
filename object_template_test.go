@@ -13,12 +13,12 @@ import (
 )
 
 func TestObjectTemplate(t *testing.T) {
-	t.Parallel()
 	iso := v8.NewIsolate()
 	defer iso.Dispose()
 	obj := v8.NewObjectTemplate(iso)
 
 	setError := func(t *testing.T, err error) {
+		t.Helper()
 		if err != nil {
 			t.Errorf("failed to set property: %v", err)
 		}
@@ -49,7 +49,6 @@ func TestObjectTemplate(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			setError(t, obj.Set(tt.name, tt.value, 0))
 		})
@@ -57,8 +56,6 @@ func TestObjectTemplate(t *testing.T) {
 }
 
 func TestObjectTemplate_panic_on_nil_isolate(t *testing.T) {
-	t.Parallel()
-
 	defer func() {
 		if err := recover(); err == nil {
 			t.Error("expected panic")
@@ -68,7 +65,6 @@ func TestObjectTemplate_panic_on_nil_isolate(t *testing.T) {
 }
 
 func TestGlobalObjectTemplate(t *testing.T) {
-	t.Parallel()
 	iso := v8.NewIsolate()
 	defer iso.Dispose()
 	tests := [...]struct {
@@ -84,6 +80,7 @@ func TestGlobalObjectTemplate(t *testing.T) {
 			},
 			"foo",
 			func(t *testing.T, val *v8.Value) {
+				t.Helper()
 				if !val.IsString() {
 					t.Errorf("expect value %q to be of type String", val)
 					return
@@ -103,6 +100,7 @@ func TestGlobalObjectTemplate(t *testing.T) {
 			},
 			"foo.bar",
 			func(t *testing.T, val *v8.Value) {
+				t.Helper()
 				if val.String() != "baz" {
 					t.Errorf("unexpected value: %v", val)
 				}
@@ -111,7 +109,6 @@ func TestGlobalObjectTemplate(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.source, func(t *testing.T) {
 			ctx := v8.NewContext(iso, tt.global())
 			val, err := ctx.RunScript(tt.source, "test.js")
@@ -125,7 +122,6 @@ func TestGlobalObjectTemplate(t *testing.T) {
 }
 
 func TestObjectTemplateNewInstance(t *testing.T) {
-	t.Parallel()
 	iso := v8.NewIsolate()
 	defer iso.Dispose()
 	tmpl := v8.NewObjectTemplate(iso)
@@ -143,8 +139,6 @@ func TestObjectTemplateNewInstance(t *testing.T) {
 }
 
 func TestObjectTemplate_garbageCollection(t *testing.T) {
-	t.Parallel()
-
 	iso := v8.NewIsolate()
 
 	tmpl := v8.NewObjectTemplate(iso)

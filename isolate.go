@@ -29,7 +29,7 @@ type Isolate struct {
 	undefined *Value
 }
 
-// HeapStatistics represents V8 isolate heap statistics
+// HeapStatistics represents V8 isolate heap statistics.
 type HeapStatistics struct {
 	TotalHeapSize            uint64
 	TotalHeapSizeExecutable  uint64

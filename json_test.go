@@ -12,8 +12,6 @@ import (
 )
 
 func TestJSONParse(t *testing.T) {
-	t.Parallel()
-
 	if _, err := v8.JSONParse(nil, "{}"); err == nil {
 		t.Error("expected error but got <nil>")
 	}
@@ -32,8 +30,6 @@ func TestJSONParse(t *testing.T) {
 }
 
 func TestJSONStringify(t *testing.T) {
-	t.Parallel()
-
 	ctx := v8.NewContext()
 	defer ctx.Isolate().Dispose()
 	defer ctx.Close()

@@ -12,7 +12,6 @@ import (
 )
 
 func TestJSErrorFormat(t *testing.T) {
-	t.Parallel()
 	tests := [...]struct {
 		name            string
 		err             error
@@ -26,9 +25,7 @@ func TestJSErrorFormat(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 			if s := fmt.Sprintf("%v", tt.err); s != tt.defaultVerb {
 				t.Errorf("incorrect format for %%v: %s", s)
 			}
@@ -46,7 +43,6 @@ func TestJSErrorFormat(t *testing.T) {
 }
 
 func TestJSErrorOutput(t *testing.T) {
-	t.Parallel()
 	ctx := v8.NewContext(nil)
 	defer ctx.Isolate().Dispose()
 	defer ctx.Close()
@@ -92,7 +88,6 @@ func TestJSErrorOutput(t *testing.T) {
 }
 
 func TestJSErrorFormat_forSyntaxError(t *testing.T) {
-	t.Parallel()
 	iso := v8.NewIsolate()
 	defer iso.Dispose()
 	ctx := v8.NewContext(iso)

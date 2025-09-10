@@ -16,14 +16,14 @@ import (
 	"unsafe"
 )
 
-// Value represents all Javascript values and objects
+// Value represents all Javascript values and objects.
 type Value struct {
 	ptr C.ValuePtr
 	ctx *Context
 }
 
 // Valuer is an interface that reperesents anything that extends from a Value
-// eg. Object, Array, Date etc
+// eg. Object, Array, Date etc.
 type Valuer interface {
 	value() *Value
 }
@@ -44,12 +44,12 @@ func newValueUndefined(iso *Isolate) *Value {
 	}
 }
 
-// Undefined returns the `undefined` JS value
+// Undefined returns the `undefined` JS value.
 func Undefined(iso *Isolate) *Value {
 	return iso.undefined
 }
 
-// Null returns the `null` JS value
+// Null returns the `null` JS value.
 func Null(iso *Isolate) *Value {
 	return iso.null
 }

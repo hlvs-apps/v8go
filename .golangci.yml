@@ -1,67 +1,137 @@
-# See https://raw.githubusercontent.com/golangci/golangci-lint/master/.golangci.example.yml
-
+version: "2"
 run:
-  timeout: 5m
-
-  skip-files:
-    - ".*_mock\\.go$"
-    - "\\.pb\\.go$"
-  skip-dirs:
-    - "deps"
-
-output:
-  # colored-line-number|line-number|json|tab|checkstyle|code-climate, default is "colored-line-number"
-  format: colored-line-number
+  build-tags:
+    - tests
 
 linters:
   enable:
-    - megacheck
-    - govet
-    - gocyclo
+    - asciicheck
+    - bidichk
+    - bodyclose
+    - copyloopvar
+    - dupl
+    - durationcheck
+    - errorlint
+    - exhaustive
+    - forbidigo
+    - forcetypeassert
     - goconst
-    - goimports
-    - gofmt  # We enable this as well as goimports for its simplify mode.
-    - prealloc
-    - revive
-    - unconvert
-    - misspell
-    - nakedret
-    - exportloopref
+    - gocritic
+    - godot
+    - goheader
+    - gomoddirectives
     - gosec
+    - importas
+    - makezero
+    - misspell
+    - mnd
+    - nakedret
+    - nestif
+    - nilerr
+    - noctx
+    - nolintlint
+    - prealloc
+    - predeclared
+    - promlinter
+    - revive
+    - rowserrcheck
+    - sqlclosecheck
+    - tagliatelle
+    - thelper
+    - tparallel
+    - unconvert
+    - unparam
+    - usetesting
+    - wastedassign
+    - whitespace
 
-linters-settings:
-  dupl:
-    threshold: 100
-  goconst:
-    ignore-tests: true
-    min-len: 2
-    min-occurrences: 2
-  goimports:
-    # put imports beginning with prefix after 3rd-party packages;
-    # it's a comma-separated list of prefixes
-  golint:
-    min-confidence: 0
-  lll:
-    line-length: 140
-  maligned:
-    suggest-new: true
+  settings:
+    exhaustive:
+      default-signifies-exhaustive: true
+
+    gomoddirectives:
+      replace-allow-list:
+        - github.com/goccy/go-yaml
+
+    gosec:
+      excludes:
+        - G115 # integer overflow conversion
+
+    govet:
+      disable:
+        - shadow
+      enable-all: false
+
+    nolintlint:
+      allow-unused: true # false would be preferable, but it's flaky (https://github.com/golangci/golangci-lint/issues/3228)
+      require-specific: true
+
+    tagliatelle:
+      case:
+        rules:
+          bson: goCamel
+          json: goCamel
+          xml: goCamel
+          yaml: goCamel
+
+  exclusions:
+    generated: lax
+
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+
+    rules:
+      - linters:
+          - dupl
+          - forcetypeassert
+          - goconst
+          - govet
+          - mnd
+        path: _test\.go
+
+    paths:
+      - ^api/*
+      - ^deploy/*
+      - ^docs/*
+      - ^hack/*
+      - ^internal/test/mocks/*
+      - third_party$
+      - builtin$
+      - examples$
 
 issues:
-  exclude-rules:
-    - path: _test\.go
-      linters:
-        - bodyclose
-        - dupl
-        - errcheck
-        - gocyclo
-        - gosec
-        - lll
-        - scopelint
+  max-same-issues: 30
 
-    - path: /doc\.go$
-      linters:
-        - lll
+formatters:
+  enable:
+    - gofumpt
+    - goimports
 
-    - linters:
-        - lll
-      source: "^//go:generate "
+  settings:
+    gci:
+      sections:
+        - standard
+        - default
+        - prefix(github.com/cerbos/cerbos)
+        - blank
+        - dot
+      custom-order: true
+
+    gofumpt:
+      extra-rules: true
+
+  exclusions:
+    generated: lax
+
+    paths:
+      - ^api/*
+      - ^deploy/*
+      - ^docs/*
+      - ^hack/*
+      - ^internal/test/mocks/*
+      - third_party$
+      - builtin$
+      - examples$

@@ -41,7 +41,7 @@ type contextOptions struct {
 	gTmpl *ObjectTemplate
 }
 
-// ContextOption sets options such as Isolate and Global Template to the NewContext
+// ContextOption sets options such as Isolate and Global Template to the NewContext.
 type ContextOption interface {
 	apply(*contextOptions)
 }
