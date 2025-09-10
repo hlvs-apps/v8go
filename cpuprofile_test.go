@@ -11,6 +11,8 @@ import (
 )
 
 func TestCPUProfile(t *testing.T) {
+	t.Parallel()
+
 	ctx := v8.NewContext(nil)
 	iso := ctx.Isolate()
 	defer iso.Dispose()
@@ -52,6 +54,8 @@ func TestCPUProfile(t *testing.T) {
 }
 
 func TestCPUProfile_Delete(t *testing.T) {
+	t.Parallel()
+
 	iso := v8.NewIsolate()
 	defer iso.Dispose()
 

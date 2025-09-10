@@ -5,9 +5,8 @@
 package v8go
 
 // #include <stdlib.h>
-// #include "v8go.h"
+// #include "context.h"
 import "C"
-
 import (
 	"runtime"
 	"sync"
@@ -22,11 +21,9 @@ type ctxRef struct {
 	refCount int
 }
 
-var (
-	ctxMutex    sync.RWMutex
-	ctxRegistry = make(map[int]*ctxRef)
-	ctxSeq      = 0
-)
+var ctxMutex sync.RWMutex
+var ctxRegistry = make(map[int]*ctxRef)
+var ctxSeq = 0
 
 // Context is a global root execution environment that allows separate,
 // unrelated, JavaScript applications to run in a single instance of V8.
@@ -41,7 +38,7 @@ type contextOptions struct {
 	gTmpl *ObjectTemplate
 }
 
-// ContextOption sets options such as Isolate and Global Template to the NewContext.
+// ContextOption sets options such as Isolate and Global Template to the NewContext
 type ContextOption interface {
 	apply(*contextOptions)
 }
@@ -91,10 +88,8 @@ func (c *Context) RetainedValueCount() int {
 }
 
 // RunScript executes the source JavaScript; origin (a.k.a. filename) provides a
-// reference for the script and used in the stack trace if there is an error
+// reference for the script and used in the stack trace if there is an error.
 // error will be of type `JSError` if not nil.
-//
-//nolint:gofumpt
 func (c *Context) RunScript(source string, origin string) (*Value, error) {
 	cSource := C.CString(source)
 	cOrigin := C.CString(origin)

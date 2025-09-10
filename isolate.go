@@ -5,15 +5,13 @@
 package v8go
 
 // #include <stdlib.h>
-// #include "v8go.h"
+// #include "isolate.h"
 import "C"
 
 import (
 	"sync"
 	"unsafe"
 )
-
-var v8once sync.Once
 
 // Isolate is a JavaScript VM instance with its own heap and
 // garbage collector. Most applications will create one isolate
@@ -23,13 +21,13 @@ type Isolate struct {
 
 	cbMutex sync.RWMutex
 	cbSeq   int
-	cbs     map[int]FunctionCallback
+	cbs     map[int]FunctionCallbackWithError
 
 	null      *Value
 	undefined *Value
 }
 
-// HeapStatistics represents V8 isolate heap statistics.
+// HeapStatistics represents V8 isolate heap statistics
 type HeapStatistics struct {
 	TotalHeapSize            uint64
 	TotalHeapSizeExecutable  uint64
@@ -55,7 +53,7 @@ func NewIsolate() *Isolate {
 	initializeIfNecessary()
 	iso := &Isolate{
 		ptr: C.NewIsolate(),
-		cbs: make(map[int]FunctionCallback),
+		cbs: make(map[int]FunctionCallbackWithError),
 	}
 	iso.null = newValueNull(iso)
 	iso.undefined = newValueUndefined(iso)
@@ -86,7 +84,10 @@ type CompileOptions struct {
 // If options contain a non-null CachedData, compilation of the script will use
 // that code cache.
 // error will be of type `JSError` if not nil.
-func (i *Isolate) CompileUnboundScript(source, origin string, opts CompileOptions) (*UnboundScript, error) {
+func (i *Isolate) CompileUnboundScript(
+	source, origin string,
+	opts CompileOptions,
+) (*UnboundScript, error) {
 	cSource := C.CString(source)
 	cOrigin := C.CString(origin)
 	defer C.free(unsafe.Pointer(cSource))
@@ -169,7 +170,7 @@ func (i *Isolate) apply(opts *contextOptions) {
 	opts.iso = i
 }
 
-func (i *Isolate) registerCallback(cb FunctionCallback) int {
+func (i *Isolate) registerCallback(cb FunctionCallbackWithError) int {
 	i.cbMutex.Lock()
 	i.cbSeq++
 	ref := i.cbSeq
@@ -178,7 +179,7 @@ func (i *Isolate) registerCallback(cb FunctionCallback) int {
 	return ref
 }
 
-func (i *Isolate) getCallback(ref int) FunctionCallback {
+func (i *Isolate) getCallback(ref int) FunctionCallbackWithError {
 	i.cbMutex.RLock()
 	defer i.cbMutex.RUnlock()
 	return i.cbs[ref]

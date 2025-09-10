@@ -5,7 +5,6 @@
 package v8go_test
 
 import (
-	"errors"
 	"fmt"
 	"testing"
 
@@ -13,6 +12,7 @@ import (
 )
 
 func TestJSErrorFormat(t *testing.T) {
+	t.Parallel()
 	tests := [...]struct {
 		name            string
 		err             error
@@ -26,7 +26,9 @@ func TestJSErrorFormat(t *testing.T) {
 	}
 
 	for _, tt := range tests {
+		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			if s := fmt.Sprintf("%v", tt.err); s != tt.defaultVerb {
 				t.Errorf("incorrect format for %%v: %s", s)
 			}
@@ -44,6 +46,7 @@ func TestJSErrorFormat(t *testing.T) {
 }
 
 func TestJSErrorOutput(t *testing.T) {
+	t.Parallel()
 	ctx := v8.NewContext(nil)
 	defer ctx.Isolate().Dispose()
 	defer ctx.Close()
@@ -69,27 +72,27 @@ func TestJSErrorOutput(t *testing.T) {
 		t.Error("expected error but got <nil>")
 		return
 	}
-	var v8Err *v8.JSError
-	ok := errors.As(err, &v8Err)
+	e, ok := err.(*v8.JSError)
 	if !ok {
 		t.Errorf("expected error of type JSError, got %T", err)
 	}
-	if v8Err.Message != "ReferenceError: c is not defined" {
-		t.Errorf("unexpected error message: %q", v8Err.Message)
+	if e.Message != "ReferenceError: c is not defined" {
+		t.Errorf("unexpected error message: %q", e.Message)
 	}
-	if v8Err.Location != "math.js:7:17" {
-		t.Errorf("unexpected error location: %q", v8Err.Location)
+	if e.Location != "math.js:7:17" {
+		t.Errorf("unexpected error location: %q", e.Location)
 	}
 	expectedStack := `ReferenceError: c is not defined
     at addMore (math.js:7:17)
     at main.js:3:10`
 
-	if v8Err.StackTrace != expectedStack {
-		t.Errorf("unexpected error stack trace: %q", v8Err.StackTrace)
+	if e.StackTrace != expectedStack {
+		t.Errorf("unexpected error stack trace: %q", e.StackTrace)
 	}
 }
 
 func TestJSErrorFormat_forSyntaxError(t *testing.T) {
+	t.Parallel()
 	iso := v8.NewIsolate()
 	defer iso.Dispose()
 	ctx := v8.NewContext(iso)
@@ -101,10 +104,7 @@ func TestJSErrorFormat_forSyntaxError(t *testing.T) {
 		let z = x + z;
 	`
 	_, err := ctx.RunScript(script, "xyz.js")
-	var jsErr *v8.JSError
-	if !errors.As(err, &jsErr) {
-		t.Errorf("expected error of type JSError, got %T", err)
-	}
+	jsErr := err.(*v8.JSError)
 	if jsErr.StackTrace != jsErr.Message {
 		t.Errorf("unexpected StackTrace %q not equal to Message %q", jsErr.StackTrace, jsErr.Message)
 	}

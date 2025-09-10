@@ -12,6 +12,7 @@ import (
 )
 
 func TestVersion(t *testing.T) {
+	t.Parallel()
 	rgx := regexp.MustCompile(`^\d+\.\d+\.\d+\.\d+-v8go$`)
 	v := v8.Version()
 	if !rgx.MatchString(v) {
@@ -20,6 +21,7 @@ func TestVersion(t *testing.T) {
 }
 
 func TestSetFlag(t *testing.T) {
+	t.Parallel()
 	ctx := v8.NewContext()
 	defer ctx.Isolate().Dispose()
 	defer ctx.Close()

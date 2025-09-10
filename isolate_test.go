@@ -15,6 +15,7 @@ import (
 )
 
 func TestIsolateTerminateExecution(t *testing.T) {
+	t.Parallel()
 	iso := v8.NewIsolate()
 	defer iso.Dispose()
 
@@ -139,6 +140,7 @@ func TestIsolateCompileUnboundScript_InvalidOptions(t *testing.T) {
 }
 
 func TestIsolateGetHeapStatistics(t *testing.T) {
+	t.Parallel()
 	iso := v8.NewIsolate()
 	defer iso.Dispose()
 	ctx1 := v8.NewContext(iso)
@@ -158,9 +160,11 @@ func TestIsolateGetHeapStatistics(t *testing.T) {
 }
 
 func TestCallbackRegistry(t *testing.T) {
+	t.Parallel()
+
 	iso := v8.NewIsolate()
 	defer iso.Dispose()
-	cb := func(*v8.FunctionCallbackInfo) *v8.Value { return nil }
+	cb := func(*v8.FunctionCallbackInfo) (*v8.Value, error) { return nil, nil }
 
 	cb0 := iso.GetCallback(0)
 	if cb0 != nil {
@@ -177,6 +181,8 @@ func TestCallbackRegistry(t *testing.T) {
 }
 
 func TestIsolateDispose(t *testing.T) {
+	t.Parallel()
+
 	iso := v8.NewIsolate()
 	if iso.GetHeapStatistics().TotalHeapSize == 0 {
 		t.Error("Isolate incorrectly allocated")
@@ -194,6 +200,7 @@ func TestIsolateDispose(t *testing.T) {
 }
 
 func TestIsolateThrowException(t *testing.T) {
+	t.Parallel()
 	iso := v8.NewIsolate()
 
 	strErr, _ := v8.NewValue(iso, "some type error")
@@ -285,7 +292,7 @@ const script = `
 
 func makeObject() interface{} {
 	return map[string]interface{}{
-		"a": rand.Intn(1000000), //nolint:gosec
+		"a": rand.Intn(1000000),
 		"b": "AAAABBBBAAAABBBBAAAABBBBAAAABBBBAAAABBBB",
 	}
 }

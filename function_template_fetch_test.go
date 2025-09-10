@@ -11,9 +11,8 @@
 package v8go_test
 
 import (
-	"context"
 	"fmt"
-	"io"
+	"io/ioutil"
 	"net/http"
 	"strings"
 
@@ -32,9 +31,8 @@ func ExampleFunctionTemplate_fetch() {
 		resolver, _ := v8.NewPromiseResolver(info.Context())
 
 		go func() {
-			req, _ := http.NewRequestWithContext(context.Background(), "GET", url, nil)
-			res, _ := http.DefaultClient.Do(req) //nolint:bodyclose
-			body, _ := io.ReadAll(res.Body)
+			res, _ := http.Get(url)
+			body, _ := ioutil.ReadAll(res.Body)
 			val, _ := v8.NewValue(iso, string(body))
 			resolver.Resolve(val)
 		}()
@@ -44,14 +42,14 @@ func ExampleFunctionTemplate_fetch() {
 
 	ctx := v8.NewContext(iso, global)
 	defer ctx.Close()
-	val, _ := ctx.RunScript("fetch('https://github.com/katallaxie/v8go')", "")
+	val, _ := ctx.RunScript("fetch('https://rogchap.com/v8go')", "")
 	prom, _ := val.AsPromise()
 
 	// wait for the promise to resolve
 	for prom.State() == v8.Pending {
 		continue
 	}
-	fmt.Printf("%s\n", strings.Split(prom.Result().String(), "\n")[7])
+	fmt.Printf("%s\n", strings.Split(prom.Result().String(), "\n")[0])
 	// Output:
 	// <!DOCTYPE html>
 }

@@ -5,13 +5,14 @@
 package v8go_test
 
 import (
-	"errors"
 	"testing"
 
 	v8 "github.com/katallaxie/v8go"
 )
 
 func TestFunctionCall(t *testing.T) {
+	t.Parallel()
+
 	ctx := v8.NewContext()
 	iso := ctx.Isolate()
 	defer iso.Dispose()
@@ -35,6 +36,8 @@ func TestFunctionCall(t *testing.T) {
 }
 
 func TestFunctionCallToGoFunc(t *testing.T) {
+	t.Parallel()
+
 	iso := v8.NewIsolate()
 	defer iso.Dispose()
 	global := v8.NewObjectTemplate(iso)
@@ -67,6 +70,8 @@ func TestFunctionCallToGoFunc(t *testing.T) {
 }
 
 func TestFunctionCallWithObjectReceiver(t *testing.T) {
+	t.Parallel()
+
 	iso := v8.NewIsolate()
 	defer iso.Dispose()
 	global := v8.NewObjectTemplate(iso)
@@ -90,6 +95,8 @@ func TestFunctionCallWithObjectReceiver(t *testing.T) {
 }
 
 func TestFunctionCallError(t *testing.T) {
+	t.Parallel()
+
 	ctx := v8.NewContext()
 	iso := ctx.Isolate()
 	defer iso.Dispose()
@@ -105,19 +112,16 @@ func TestFunctionCallError(t *testing.T) {
 	if err == nil {
 		t.Errorf("expected an error, got none")
 	}
-	var v8Err *v8.JSError
-	if !errors.As(err, &v8Err) {
-		t.Errorf("expected error of type JSError, got %T", err)
-	}
-	if v8Err.Message != "error" {
-		t.Errorf("unexpected error message: %q", v8Err.Message)
-	}
-	if v8Err.Location != "script.js:1:21" {
-		t.Errorf("unexpected error location: %q", v8Err.Location)
+	got := *(err.(*v8.JSError))
+	want := v8.JSError{Message: "error", Location: "script.js:1:21"}
+	if got != want {
+		t.Errorf("want %+v, got: %+v", want, got)
 	}
 }
 
 func TestFunctionSourceMapUrl(t *testing.T) {
+	t.Parallel()
+
 	ctx := v8.NewContext()
 	defer ctx.Isolate().Dispose()
 	defer ctx.Close()
@@ -128,7 +132,7 @@ func TestFunctionSourceMapUrl(t *testing.T) {
 
 	fn, _ := addValue.AsFunction()
 
-	resultVal := fn.SourceMapURL()
+	resultVal := fn.SourceMapUrl()
 	if resultVal.String() != "main.js.map" {
 		t.Errorf("expected main.js.map, got %v", resultVal.String())
 	}
@@ -139,13 +143,15 @@ func TestFunctionSourceMapUrl(t *testing.T) {
 	fatalIf(t, err)
 
 	subFn, _ := subValue.AsFunction()
-	resultVal = subFn.SourceMapURL()
+	resultVal = subFn.SourceMapUrl()
 	if !resultVal.IsUndefined() {
 		t.Errorf("expected undefined, got: %v", resultVal.DetailString())
 	}
 }
 
 func TestFunctionNewInstance(t *testing.T) {
+	t.Parallel()
+
 	ctx := v8.NewContext()
 	defer ctx.Isolate().Dispose()
 	defer ctx.Close()
@@ -174,6 +180,8 @@ func TestFunctionNewInstance(t *testing.T) {
 }
 
 func TestFunctionNewInstanceError(t *testing.T) {
+	t.Parallel()
+
 	ctx := v8.NewContext()
 	defer ctx.Isolate().Dispose()
 	defer ctx.Close()
@@ -188,14 +196,9 @@ func TestFunctionNewInstanceError(t *testing.T) {
 	if err == nil {
 		t.Errorf("expected an error, got none")
 	}
-	var v8Err *v8.JSError
-	if !errors.As(err, &v8Err) {
-		t.Errorf("expected error of type JSError, got %T", err)
-	}
-	if v8Err.Message != "error" {
-		t.Errorf("unexpected error message: %q", v8Err.Message)
-	}
-	if v8Err.Location != "script.js:1:21" {
-		t.Errorf("unexpected error location: %q", v8Err.Location)
+	got := *(err.(*v8.JSError))
+	want := v8.JSError{Message: "error", Location: "script.js:1:21"}
+	if got != want {
+		t.Errorf("want %+v, got: %+v", want, got)
 	}
 }

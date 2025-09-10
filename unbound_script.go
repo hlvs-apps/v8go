@@ -5,7 +5,7 @@
 package v8go
 
 // #include <stdlib.h>
-// #include "v8go.h"
+// #include "unbound_script.h"
 import "C"
 import "unsafe"
 
@@ -31,7 +31,7 @@ func (u *UnboundScript) CreateCodeCache() *CompilerCachedData {
 	rtn := C.UnboundScriptCreateCodeCache(u.iso.ptr, u.ptr)
 
 	cachedData := &CompilerCachedData{
-		Bytes:    C.GoBytes(unsafe.Pointer(rtn.data), rtn.length),
+		Bytes:    []byte(C.GoBytes(unsafe.Pointer(rtn.data), rtn.length)),
 		Rejected: int(rtn.rejected) == 1,
 	}
 	C.ScriptCompilerCachedDataDelete(rtn)

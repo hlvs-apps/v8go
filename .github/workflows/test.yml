@@ -1,0 +1,84 @@
+name: Test
+
+on:
+  push:
+    branches:
+    - master
+  pull_request:
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      sha:
+        description: "The commit to check out at. Defaults to the parent workflow's github.sha."
+        required: false
+        type: string
+
+jobs:
+  test:
+    name: Tests on ${{ matrix.os }} ${{ matrix.arch }} with Go ${{ matrix.go-version }}
+    strategy:
+      matrix:
+        os: [darwin, linux]
+        arch: [amd64, arm64]
+        go-version:
+        # Check the earliest and two trailing versions, to keep
+        # maintainance of this file reasonable.
+        - 1.19
+        - oldstable
+        - stable
+        include:
+        - os: linux
+          platform: ubuntu-latest
+        - os: darwin
+          platform: macos-latest
+    runs-on: ${{ matrix.platform }}
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      with:
+        ref: ${{ inputs.sha }}
+
+    - name: Install Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: ${{ matrix.go-version }}
+
+    - name: Add GOPATH to GITHUB_ENV
+      run: echo "GOPATH=$(go env GOPATH)" >>"$GITHUB_ENV"
+
+    - name: Set Up Workspace
+      # Submodules shouldn't cause a download.
+      run: |
+        set -o pipefail
+        go work init . $(ls ./deps/*_*/cgo.go | xargs -r dirname)
+
+    - name: Run Tests With Coverage
+      run: |
+        # https://github.com/katallaxie/v8go/actions/runs/7363603520/job/20043211523 shows that TestCPUProfileNode can be flaky.
+        go test -v -coverprofile coverage.out ./... || go test -v -coverprofile coverage.out ./...
+      env:
+        CGO_CXXFLAGS: "-Werror"
+
+    - name: Upload Coverage To Codecov
+      uses: codecov/codecov-action@v3
+      if: env._HAS_CODECOV_TOKEN == 'true'
+      env:
+        _HAS_CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN != '' }}
+        OS: ${{ matrix.os }}
+        ARCH: ${{ matrix.arch }}
+        PLATFORM: ${{ matrix.platform }}
+        GO: ${{ matrix.go-version }}
+      with:
+        token: ${{ secrets.CODECOV_TOKEN }}
+        files: ./coverage.out
+        flags: unittests
+        fail_ci_if_error: true
+        env_vars: OS,ARCH,PLATFORM,GO
+
+    - name: Scan and Upload FOSSA Data
+      if: env.FOSSA_API_KEY != '' && github.ref == 'refs/heads/master'
+      run: |
+        curl https://raw.githubusercontent.com/fossas/fossa-cli/master/install.sh | sudo bash
+        fossa analyze
+      env:
+        FOSSA_API_KEY: ${{ secrets.FOSSA_API_KEY }}
