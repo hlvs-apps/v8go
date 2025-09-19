@@ -2,7 +2,7 @@
 
 # Go variables
 GO 					?= go
-GO_RELEASER 		?= goreleaser
+GO_RELEASER 		?= $(GO_TOOL) github.com/goreleaser/goreleaser
 GO_TOOL 			?= $(GO) tool
 GO_TEST 			?= $(GO_TOOL) gotest.tools/gotestsum --format pkgname
 
