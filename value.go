@@ -16,14 +16,14 @@ import (
 	"unsafe"
 )
 
-// Value represents all Javascript values and objects
+// Value represents all Javascript values and objects.
 type Value struct {
 	ptr C.ValuePtr
 	ctx *Context
 }
 
 // Valuer is an interface that reperesents anything that extends from a Value
-// eg. Object, Array, Date etc
+// eg. Object, Array, Date etc.
 type Valuer interface {
 	value() *Value
 }
@@ -44,12 +44,12 @@ func newValueUndefined(iso *Isolate) *Value {
 	}
 }
 
-// Undefined returns the `undefined` JS value
+// Undefined returns the `undefined` JS value.
 func Undefined(iso *Isolate) *Value {
 	return iso.undefined
 }
 
-// Null returns the `null` JS value
+// Null returns the `null` JS value.
 func Null(iso *Isolate) *Value {
 	return iso.null
 }
@@ -126,7 +126,7 @@ func NewValue(iso *Isolate, val interface{}) (*Value, error) {
 		bits := v.Bits()
 		count = len(bits)
 
-		words := make([]C.uint64_t, count, count)
+		words := make([]C.uint64_t, count)
 		for idx, word := range bits {
 			words[idx] = C.uint64_t(word)
 		}
@@ -243,7 +243,7 @@ func (v *Value) Object() *Object {
 func (v *Value) String() string {
 	s := C.ValueToString(v.ptr)
 	defer C.free(unsafe.Pointer(s.data))
-	return C.GoStringN(s.data, C.int(s.length))
+	return C.GoStringN(s.data, s.length)
 }
 
 // Uint32 perform the equivalent of `Number(value)` in JS and convert the result to an
@@ -609,7 +609,7 @@ func (v *Value) SharedArrayBufferGetContents() ([]byte, func(), error) {
 		C.BackingStoreRelease(backingStore)
 	}
 
-	byte_ptr := (*byte)(unsafe.Pointer(C.BackingStoreData(backingStore)))
+	byte_ptr := (*byte)(C.BackingStoreData(backingStore))
 	byte_size := C.BackingStoreByteLength(backingStore)
 	byte_slice := unsafe.Slice(byte_ptr, byte_size)
 

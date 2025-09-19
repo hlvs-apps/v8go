@@ -11,8 +11,6 @@ import (
 )
 
 func TestBuiltinSymbol(t *testing.T) {
-	t.Parallel()
-
 	iso := v8.NewIsolate()
 	defer iso.Dispose()
 

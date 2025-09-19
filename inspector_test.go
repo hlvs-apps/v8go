@@ -58,11 +58,10 @@ func (iso *IsolateWithInspector) NewContext() *ContextWithInspector {
 
 func (ctx *ContextWithInspector) Dispose() {
 	ctx.iso.inspector.ContextDestroyed(ctx.Context)
-	ctx.Context.Close()
+	ctx.Close()
 }
 
 func TestMonitorConsoleLogLevelt(t *testing.T) {
-	t.Parallel()
 	recorder := consoleAPIMessageRecorder{}
 	iso := NewIsolateWithInspectorClient(&recorder)
 	defer iso.Dispose()
@@ -103,7 +102,6 @@ func TestMonitorConsoleLogLevelt(t *testing.T) {
 //
 // https://v8.github.io/api/head/classv8__inspector_1_1StringView.html
 func TestMonitorConsoleLogWideCharacters(t *testing.T) {
-	t.Parallel()
 	recorder := consoleAPIMessageRecorder{}
 	iso := NewIsolateWithInspectorClient(&recorder)
 	defer iso.Dispose()

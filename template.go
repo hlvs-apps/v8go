@@ -38,7 +38,7 @@ func (t *template) Set(name string, val interface{}, attributes ...PropertyAttri
 	case string, int32, uint32, int64, uint64, float64, bool, *big.Int:
 		newVal, err := NewValue(t.iso, v)
 		if err != nil {
-			return fmt.Errorf("v8go: unable to create new value: %v", err)
+			return fmt.Errorf("v8go: unable to create new value: %w", err)
 		}
 		C.TemplateSetValue(t.ptr, cname, newVal.ptr, C.int(attrs))
 	case *ObjectTemplate:
@@ -74,7 +74,7 @@ func (t *template) SetSymbol(key *Symbol, val interface{}, attributes ...Propert
 	case string, int32, uint32, int64, uint64, float64, bool, *big.Int:
 		newVal, err := NewValue(t.iso, v)
 		if err != nil {
-			return fmt.Errorf("v8go: unable to create new value: %v", err)
+			return fmt.Errorf("v8go: unable to create new value: %w", err)
 		}
 		if C.TemplateSetAnyValue(t.ptr, key.ptr, newVal.ptr, C.int(attrs)) == 0 {
 			return fmt.Errorf("v8go: unable to set property for symbol %v", key)

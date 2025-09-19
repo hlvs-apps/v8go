@@ -48,7 +48,7 @@ func symbolByIndex(iso *Isolate, idx C.SymbolIndex) *Symbol {
 // Description returns the string representation of the symbol,
 // e.g. "Symbol.asyncIterator".
 func (sym *Symbol) Description() string {
-	s := C.SymbolDescription(sym.Value.ptr)
+	s := C.SymbolDescription(sym.ptr)
 	defer C.free(unsafe.Pointer(s))
 	return C.GoString(s)
 }

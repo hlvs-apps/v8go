@@ -11,8 +11,6 @@ import (
 )
 
 func TestCPUProfileNode(t *testing.T) {
-	t.Parallel()
-
 	ctx := v8.NewContext(nil)
 	iso := ctx.Isolate()
 	defer iso.Dispose()
@@ -95,7 +93,8 @@ func findChild(t *testing.T, node *v8.CPUProfileNode, functionName string) *v8.C
 	return child
 }
 
-func checkNode(t *testing.T, node *v8.CPUProfileNode, scriptResourceName string, functionName string, line, column int) {
+//nolint:unparam
+func checkNode(t *testing.T, node *v8.CPUProfileNode, scriptResourceName, functionName string, line, column int) {
 	t.Helper()
 
 	if node.GetFunctionName() != functionName {

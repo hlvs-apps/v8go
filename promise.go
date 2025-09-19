@@ -29,7 +29,7 @@ type PromiseResolver struct {
 	prom *Promise
 }
 
-// Promise is the JavaScript promise object defined in ES6
+// Promise is the JavaScript promise object defined in ES6.
 type Promise struct {
 	*Object
 }
@@ -97,7 +97,6 @@ func (p *Promise) Result() *Value {
 func (p *Promise) Then(cbs ...FunctionCallback) *Promise {
 	cbwes := make([]FunctionCallbackWithError, len(cbs))
 	for i, cb := range cbs {
-		cb := cb
 		cbwes[i] = func(info *FunctionCallbackInfo) (*Value, error) {
 			return cb(info), nil
 		}

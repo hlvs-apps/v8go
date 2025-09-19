@@ -182,12 +182,7 @@ func (tmpl *FunctionTemplate) Inherit(base *FunctionTemplate) {
 // to workaround an ERROR_COMMITMENT_LIMIT error on windows that was detected in CI.
 //
 //export goFunctionCallback
-func goFunctionCallback(
-	ctxref int,
-	cbref int,
-	thisAndArgs *C.ValuePtr,
-	argsCount int,
-) (rval C.ValuePtr, rerr C.ValuePtr) {
+func goFunctionCallback(ctxref, cbref int, thisAndArgs *C.ValuePtr, argsCount int) (rval, rerr C.ValuePtr) {
 	ctx := getContext(ctxref)
 
 	this := *thisAndArgs
@@ -206,7 +201,7 @@ func goFunctionCallback(
 	callbackFunc := ctx.iso.getCallback(cbref)
 	val, err := callbackFunc(info)
 	if err != nil {
-		if verr, ok := err.(ValueError); ok {
+		if verr, ok := err.(ValueError); ok { //nolint:errorlint
 			return nil, verr.value().ptr
 		}
 		errv, err := NewValue(ctx.iso, err.Error())

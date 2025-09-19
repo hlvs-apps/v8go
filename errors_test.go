@@ -5,6 +5,7 @@
 package v8go_test
 
 import (
+	"errors"
 	"fmt"
 	"testing"
 
@@ -12,7 +13,6 @@ import (
 )
 
 func TestJSErrorFormat(t *testing.T) {
-	t.Parallel()
 	tests := [...]struct {
 		name            string
 		err             error
@@ -26,9 +26,7 @@ func TestJSErrorFormat(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 			if s := fmt.Sprintf("%v", tt.err); s != tt.defaultVerb {
 				t.Errorf("incorrect format for %%v: %s", s)
 			}
@@ -46,7 +44,6 @@ func TestJSErrorFormat(t *testing.T) {
 }
 
 func TestJSErrorOutput(t *testing.T) {
-	t.Parallel()
 	ctx := v8.NewContext(nil)
 	defer ctx.Isolate().Dispose()
 	defer ctx.Close()
@@ -72,27 +69,30 @@ func TestJSErrorOutput(t *testing.T) {
 		t.Error("expected error but got <nil>")
 		return
 	}
-	e, ok := err.(*v8.JSError)
+	var v8Err *v8.JSError
+	ok := errors.As(err, &v8Err) // unwrap any wrapped errors
 	if !ok {
 		t.Errorf("expected error of type JSError, got %T", err)
 	}
-	if e.Message != "ReferenceError: c is not defined" {
-		t.Errorf("unexpected error message: %q", e.Message)
+	if !ok {
+		t.Errorf("expected error of type JSError, got %T", err)
 	}
-	if e.Location != "math.js:7:17" {
-		t.Errorf("unexpected error location: %q", e.Location)
+	if v8Err.Message != "ReferenceError: c is not defined" {
+		t.Errorf("unexpected error message: %q", v8Err.Message)
+	}
+	if v8Err.Location != "math.js:7:17" {
+		t.Errorf("unexpected error location: %q", v8Err.Location)
 	}
 	expectedStack := `ReferenceError: c is not defined
     at addMore (math.js:7:17)
     at main.js:3:10`
 
-	if e.StackTrace != expectedStack {
-		t.Errorf("unexpected error stack trace: %q", e.StackTrace)
+	if v8Err.StackTrace != expectedStack {
+		t.Errorf("unexpected error stack trace: %q", v8Err.StackTrace)
 	}
 }
 
 func TestJSErrorFormat_forSyntaxError(t *testing.T) {
-	t.Parallel()
 	iso := v8.NewIsolate()
 	defer iso.Dispose()
 	ctx := v8.NewContext(iso)
@@ -104,11 +104,16 @@ func TestJSErrorFormat_forSyntaxError(t *testing.T) {
 		let z = x + z;
 	`
 	_, err := ctx.RunScript(script, "xyz.js")
-	jsErr := err.(*v8.JSError)
-	if jsErr.StackTrace != jsErr.Message {
-		t.Errorf("unexpected StackTrace %q not equal to Message %q", jsErr.StackTrace, jsErr.Message)
+
+	var v8Err *v8.JSError
+	ok := errors.As(err, &v8Err) // unwrap any wrapped errors
+	if !ok {
+		t.Errorf("expected error of type JSError, got %T", err)
 	}
-	if jsErr.Location == "" {
+	if v8Err.StackTrace != v8Err.Message {
+		t.Errorf("unexpected StackTrace %q not equal to Message %q", v8Err.StackTrace, v8Err.Message)
+	}
+	if v8Err.Location == "" {
 		t.Errorf("missing Location")
 	}
 

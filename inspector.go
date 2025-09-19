@@ -90,7 +90,7 @@ type ConsoleAPIMessageHandler interface {
 // communicating with the [InspectorClient] client.
 //
 // Before disposing the iso, be sure to dispose the inspector using
-// [Inspector.Dispose]
+// [Inspector.Dispose].
 func NewInspector(iso *Isolate, client *InspectorClient) *Inspector {
 	ptr := C.CreateInspector(iso.ptr, client.ptr)
 	return &Inspector{
@@ -127,7 +127,7 @@ func NewInspectorClient(handler ConsoleAPIMessageHandler) *InspectorClient {
 }
 
 // Dispose frees up resources taken up by the [InspectorClient]. Be sure to call
-// this after calling [Inspector.Dispose]
+// this after calling [Inspector.Dispose].
 func (c *InspectorClient) Dispose() {
 	c.clientHandle.Delete()
 	C.DeleteInspectorClient(c.ptr)

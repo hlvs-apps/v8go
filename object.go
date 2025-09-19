@@ -14,7 +14,7 @@ import (
 	"unsafe"
 )
 
-// Object is a JavaScript object (ECMA-262, 4.3.3)
+// Object is a JavaScript object (ECMA-262, 4.3.3).
 type Object struct {
 	*Value
 }

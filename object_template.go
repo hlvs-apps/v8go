@@ -112,7 +112,7 @@ func (o *ObjectTemplate) apply(opts *contextOptions) {
 // objects.
 //
 // Note: Undetectable objects MUST have a CallAsFunctionHandler, see
-// [ObjectTemplate.SetCallAsFunctionHandler]
+// [ObjectTemplate.SetCallAsFunctionHandler].
 func (o *ObjectTemplate) MarkAsUndetectable() {
 	C.ObjectTemplateMarkAsUndetectable(o.ptr)
 }

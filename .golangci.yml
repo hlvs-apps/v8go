@@ -50,6 +50,7 @@ linters:
     - revive
     - mnd
     - forbidigo
+    - gomoddirectives
 
   settings:
     exhaustive:

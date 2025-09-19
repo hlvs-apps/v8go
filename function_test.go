@@ -5,14 +5,13 @@
 package v8go_test
 
 import (
+	"errors"
 	"testing"
 
 	v8 "github.com/katallaxie/v8go"
 )
 
 func TestFunctionCall(t *testing.T) {
-	t.Parallel()
-
 	ctx := v8.NewContext()
 	iso := ctx.Isolate()
 	defer iso.Dispose()
@@ -36,8 +35,6 @@ func TestFunctionCall(t *testing.T) {
 }
 
 func TestFunctionCallToGoFunc(t *testing.T) {
-	t.Parallel()
-
 	iso := v8.NewIsolate()
 	defer iso.Dispose()
 	global := v8.NewObjectTemplate(iso)
@@ -70,8 +67,6 @@ func TestFunctionCallToGoFunc(t *testing.T) {
 }
 
 func TestFunctionCallWithObjectReceiver(t *testing.T) {
-	t.Parallel()
-
 	iso := v8.NewIsolate()
 	defer iso.Dispose()
 	global := v8.NewObjectTemplate(iso)
@@ -95,8 +90,6 @@ func TestFunctionCallWithObjectReceiver(t *testing.T) {
 }
 
 func TestFunctionCallError(t *testing.T) {
-	t.Parallel()
-
 	ctx := v8.NewContext()
 	iso := ctx.Isolate()
 	defer iso.Dispose()
@@ -112,16 +105,20 @@ func TestFunctionCallError(t *testing.T) {
 	if err == nil {
 		t.Errorf("expected an error, got none")
 	}
-	got := *(err.(*v8.JSError))
+
+	var jsErr *v8.JSError
+	ok := errors.As(err, &jsErr)
+	if !ok {
+		t.Errorf("expected an error of type JSError, got %T", err)
+	}
+
 	want := v8.JSError{Message: "error", Location: "script.js:1:21"}
-	if got != want {
-		t.Errorf("want %+v, got: %+v", want, got)
+	if *jsErr != want {
+		t.Errorf("want %+v, got: %+v", want, jsErr)
 	}
 }
 
 func TestFunctionSourceMapUrl(t *testing.T) {
-	t.Parallel()
-
 	ctx := v8.NewContext()
 	defer ctx.Isolate().Dispose()
 	defer ctx.Close()
@@ -150,8 +147,6 @@ func TestFunctionSourceMapUrl(t *testing.T) {
 }
 
 func TestFunctionNewInstance(t *testing.T) {
-	t.Parallel()
-
 	ctx := v8.NewContext()
 	defer ctx.Isolate().Dispose()
 	defer ctx.Close()
@@ -180,8 +175,6 @@ func TestFunctionNewInstance(t *testing.T) {
 }
 
 func TestFunctionNewInstanceError(t *testing.T) {
-	t.Parallel()
-
 	ctx := v8.NewContext()
 	defer ctx.Isolate().Dispose()
 	defer ctx.Close()
@@ -196,9 +189,15 @@ func TestFunctionNewInstanceError(t *testing.T) {
 	if err == nil {
 		t.Errorf("expected an error, got none")
 	}
-	got := *(err.(*v8.JSError))
+
+	var jsErr *v8.JSError
+	ok := errors.As(err, &jsErr)
+	if !ok {
+		t.Errorf("expected an error of type JSError, got %T", err)
+	}
+
 	want := v8.JSError{Message: "error", Location: "script.js:1:21"}
-	if got != want {
-		t.Errorf("want %+v, got: %+v", want, got)
+	if *jsErr != want {
+		t.Errorf("want %+v, got: %+v", want, jsErr)
 	}
 }

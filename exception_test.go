@@ -13,8 +13,6 @@ import (
 )
 
 func TestNewError(t *testing.T) {
-	t.Parallel()
-
 	tsts := []struct {
 		New      func(*v8.Isolate, string) *v8.Exception
 		WantType string

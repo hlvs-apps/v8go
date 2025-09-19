@@ -12,8 +12,6 @@ import (
 )
 
 func TestPromiseFulfilled(t *testing.T) {
-	t.Parallel()
-
 	iso := v8.NewIsolate()
 	defer iso.Dispose()
 	ctx := v8.NewContext(iso)
@@ -62,8 +60,6 @@ func TestPromiseFulfilled(t *testing.T) {
 }
 
 func TestPromiseRejected(t *testing.T) {
-	t.Parallel()
-
 	iso := v8.NewIsolate()
 	defer iso.Dispose()
 	ctx := v8.NewContext(iso)
@@ -112,8 +108,6 @@ func TestPromiseRejected(t *testing.T) {
 }
 
 func TestPromiseThenCanThrow(t *testing.T) {
-	t.Parallel()
-
 	iso := v8.NewIsolate()
 	defer iso.Dispose()
 	ctx := v8.NewContext(iso)
@@ -142,8 +136,6 @@ func TestPromiseThenCanThrow(t *testing.T) {
 }
 
 func TestPromiseThenPanic(t *testing.T) {
-	t.Parallel()
-
 	iso := v8.NewIsolate()
 	defer iso.Dispose()
 	ctx := v8.NewContext(iso)

@@ -12,7 +12,7 @@ package v8go_test
 
 import (
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"strings"
 
@@ -31,8 +31,8 @@ func ExampleFunctionTemplate_fetch() {
 		resolver, _ := v8.NewPromiseResolver(info.Context())
 
 		go func() {
-			res, _ := http.Get(url)
-			body, _ := ioutil.ReadAll(res.Body)
+			res, _ := http.Get(url) //nolint:gosec,noctx,bodyclose
+			body, _ := io.ReadAll(res.Body)
 			val, _ := v8.NewValue(iso, string(body))
 			resolver.Resolve(val)
 		}()

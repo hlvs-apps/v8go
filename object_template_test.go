@@ -14,12 +14,12 @@ import (
 )
 
 func TestObjectTemplate(t *testing.T) {
-	t.Parallel()
 	iso := v8.NewIsolate()
 	defer iso.Dispose()
 	obj := v8.NewObjectTemplate(iso)
 
 	setError := func(t *testing.T, err error) {
+		t.Helper()
 		if err != nil {
 			t.Errorf("failed to set property: %v", err)
 		}
@@ -52,7 +52,6 @@ func TestObjectTemplate(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			setError(t, obj.Set(tt.name, tt.value, 0))
 		})
@@ -60,7 +59,6 @@ func TestObjectTemplate(t *testing.T) {
 }
 
 func TestObjectTemplateSetSymbol(t *testing.T) {
-	t.Parallel()
 	iso := v8.NewIsolate()
 	defer iso.Dispose()
 	obj := v8.NewObjectTemplate(iso)
@@ -77,8 +75,6 @@ func TestObjectTemplateSetSymbol(t *testing.T) {
 }
 
 func TestObjectTemplate_panic_on_nil_isolate(t *testing.T) {
-	t.Parallel()
-
 	defer func() {
 		if err := recover(); err == nil {
 			t.Error("expected panic")
@@ -88,7 +84,6 @@ func TestObjectTemplate_panic_on_nil_isolate(t *testing.T) {
 }
 
 func TestGlobalObjectTemplate(t *testing.T) {
-	t.Parallel()
 	iso := v8.NewIsolate()
 	defer iso.Dispose()
 	tests := [...]struct {
@@ -104,6 +99,7 @@ func TestGlobalObjectTemplate(t *testing.T) {
 			},
 			"foo",
 			func(t *testing.T, val *v8.Value) {
+				t.Helper()
 				if !val.IsString() {
 					t.Errorf("expect value %q to be of type String", val)
 					return
@@ -123,6 +119,7 @@ func TestGlobalObjectTemplate(t *testing.T) {
 			},
 			"foo.bar",
 			func(t *testing.T, val *v8.Value) {
+				t.Helper()
 				if val.String() != "baz" {
 					t.Errorf("unexpected value: %v", val)
 				}
@@ -131,12 +128,11 @@ func TestGlobalObjectTemplate(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.source, func(t *testing.T) {
 			ctx := v8.NewContext(iso, tt.global())
 			val, err := ctx.RunScript(tt.source, "test.js")
 			if err != nil {
-				t.Fatalf("unexpected error runing script: %v", err)
+				t.Fatalf("unexpected error running script: %v", err)
 			}
 			tt.validate(t, val)
 			ctx.Close()
@@ -145,7 +141,6 @@ func TestGlobalObjectTemplate(t *testing.T) {
 }
 
 func TestObjectTemplateNewInstance(t *testing.T) {
-	t.Parallel()
 	iso := v8.NewIsolate()
 	defer iso.Dispose()
 	tmpl := v8.NewObjectTemplate(iso)
@@ -165,7 +160,7 @@ func TestObjectTemplateNewInstance(t *testing.T) {
 func TestObjectTemplateSetAccessorProperty_OnlyGetter(t *testing.T) {
 	// Create an accessor property that has only a getter.
 	// Setting the value from JS should not have side effects.
-	t.Parallel()
+
 	iso := v8.NewIsolate()
 	defer iso.Dispose()
 
@@ -195,7 +190,6 @@ func TestObjectTemplateSetAccessorProperty_OnlyGetter(t *testing.T) {
 }
 
 func TestObjectTemplateSetAccessorProperty_GetterAnSetter(t *testing.T) {
-	t.Parallel()
 	iso := v8.NewIsolate()
 	defer iso.Dispose()
 	var value *v8.Value
@@ -231,8 +225,6 @@ func TestObjectTemplateSetAccessorProperty_GetterAnSetter(t *testing.T) {
 }
 
 func TestObjectTemplate_garbageCollection(t *testing.T) {
-	t.Parallel()
-
 	iso := v8.NewIsolate()
 
 	tmpl := v8.NewObjectTemplate(iso)
@@ -274,7 +266,6 @@ func ExampleObjectTemplate_SetAccessorProperty() {
 }
 
 func TestObjectTemplateSetCallAsFunctionHandler(t *testing.T) {
-	t.Parallel()
 	iso := v8.NewIsolate()
 	defer iso.Dispose()
 	tmpl := v8.NewObjectTemplate(iso)
@@ -290,7 +281,7 @@ func TestObjectTemplateSetCallAsFunctionHandler(t *testing.T) {
 	}
 	ctx.Global().Set("obj", instance)
 
-	res, err := ctx.RunScript(`obj()`, "")
+	res, _ := ctx.RunScript(`obj()`, "")
 	resStr := res.String()
 	if resStr != "42" {
 		t.Errorf(`unexpected result. Expected "42", got: %s`, resStr)
@@ -298,8 +289,6 @@ func TestObjectTemplateSetCallAsFunctionHandler(t *testing.T) {
 }
 
 func TestObjectTemplateMarkAsUndetectable(t *testing.T) {
-	t.Parallel()
-
 	iso := v8.NewIsolate()
 	defer iso.Dispose()
 	obj := v8.NewObjectTemplate(iso)
@@ -338,8 +327,6 @@ func TestObjectTemplateMarkAsUndetectable(t *testing.T) {
 }
 
 func TestObjectTemplateMarkAsUndetectableOnInstanceTemplate(t *testing.T) {
-	t.Parallel()
-
 	iso := v8.NewIsolate()
 	defer iso.Dispose()
 	ctx := v8.NewContext(iso)
@@ -362,33 +349,27 @@ func TestObjectTemplateMarkAsUndetectableOnInstanceTemplate(t *testing.T) {
 	res, err := ctx.RunScript("undetectable.toString()", "")
 	if err != nil {
 		t.Errorf("Error calling toString(): %v", err)
-	} else {
-		if res.String() != "[object Object]" {
-			t.Errorf(
-				`Error running "undetectable.toString()". Expected "[object Object]", got: %s`,
-				res.String(),
-			)
-		}
+	} else if res.String() != "[object Object]" {
+		t.Errorf(
+			`Error running "undetectable.toString()". Expected "[object Object]", got: %s`,
+			res.String(),
+		)
 	}
 
 	res, err = ctx.RunScript("typeof undetectable", "")
 	if err != nil {
 		t.Errorf("Error calling typeof undetectable: %v", err)
-	} else {
-		if res.String() != "undefined" {
-			t.Errorf(
-				`Error running "typeof undetectable". Expected "undefined", got: %s`,
-				res.String(),
-			)
-		}
+	} else if res.String() != "undefined" {
+		t.Errorf(
+			`Error running "typeof undetectable". Expected "undefined", got: %s`,
+			res.String(),
+		)
 	}
 
 	res, err = ctx.RunScript("Boolean(undetectable)", "")
 	if err != nil {
 		t.Errorf("Error calling typeof undetectable: %v", err)
-	} else {
-		if res.Boolean() {
-			t.Errorf("Expected undetectable object to be falsy")
-		}
+	} else if res.Boolean() {
+		t.Errorf("Expected undetectable object to be falsy")
 	}
 }

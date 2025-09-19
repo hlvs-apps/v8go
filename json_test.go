@@ -5,6 +5,7 @@
 package v8go_test
 
 import (
+	"errors"
 	"fmt"
 	"testing"
 
@@ -12,8 +13,6 @@ import (
 )
 
 func TestJSONParse(t *testing.T) {
-	t.Parallel()
-
 	if _, err := v8.JSONParse(nil, "{}"); err == nil {
 		t.Error("expected error but got <nil>")
 	}
@@ -26,14 +25,14 @@ func TestJSONParse(t *testing.T) {
 		return
 	}
 
-	if _, ok := err.(*v8.JSError); !ok {
-		t.Errorf("expected error to be of type JSError, got: %T", err)
+	var jsErr *v8.JSError
+	ok := errors.As(err, &jsErr)
+	if !ok {
+		t.Errorf("expected an error of type JSError, got %T", err)
 	}
 }
 
 func TestJSONStringify(t *testing.T) {
-	t.Parallel()
-
 	ctx := v8.NewContext()
 	defer ctx.Isolate().Dispose()
 	defer ctx.Close()
