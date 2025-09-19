@@ -1,5 +1,4 @@
 {
-    "name": "katallaxie/v8go",
     "build": {
         "dockerfile": "Dockerfile",
         // Update 'VARIANT' to pick an Ubuntu version: jammy / ubuntu-24.04, focal / ubuntu-20.04, bionic /ubuntu-18.04
@@ -23,4 +22,4 @@
           ]
       }
     }
-  }
+}
