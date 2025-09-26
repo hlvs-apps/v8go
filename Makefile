@@ -27,6 +27,10 @@ fmt: ## Run go fmt against code.
 vet: ## Run go vet against code.
 	$(GO) vet ./...
 
+.PHONY: bench
+bench: fmt vet ## Run benchmarks.
+	$(GO_TEST) --junitfile .test/reports/bench-test.xml -- -run=^$$ -bench=. ./... -count=1 -cover -coverprofile .test/reports/bench-test-coverage.out
+
 .PHONY: test
 test: fmt vet ## Run tests.
 	mkdir -p .test/reports
