@@ -6,6 +6,7 @@ GO_RELEASER 		?= $(GO_TOOL) github.com/goreleaser/goreleaser
 GO_LINT 			?= $(GO_TOOL) github.com/golangci/golangci-lint/v2/cmd/golangci-lint
 GO_TOOL 			?= $(GO) tool
 GO_TEST 			?= $(GO_TOOL) gotest.tools/gotestsum --format pkgname
+GO_BENCHSTAT 		?= $(GO_TOOL) golang.org/x/perf/cmd/benchstat
 
 .PHONY: build
 build: ## Build the binary file.
@@ -29,7 +30,7 @@ vet: ## Run go vet against code.
 
 .PHONY: bench
 bench: fmt vet ## Run benchmarks.
-	$(GO_TEST) --junitfile .test/reports/bench-test.xml -- -run=^$$ -bench=. ./... -count=1 -cover -coverprofile .test/reports/bench-test-coverage.out
+	$(GO) test -bench=. | $(GO_BENCHSTAT) -
 
 .PHONY: test
 test: fmt vet ## Run tests.

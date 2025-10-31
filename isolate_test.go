@@ -8,10 +8,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/rand"
+	"os"
 	"strings"
 	"testing"
 
 	v8 "github.com/katallaxie/v8go"
+	"github.com/stretchr/testify/require"
 )
 
 func TestIsolateTerminateExecution(t *testing.T) {
@@ -256,6 +258,19 @@ func BenchmarkIsolateInitialization(b *testing.B) {
 	}
 }
 
+const script = `
+	const process = (record) => {
+		const res = [];
+		for (let [k, v] of Object.entries(record)) {
+			res.push({
+				name: k,
+				value: v,
+			});
+		}
+		return JSON.stringify(res);
+	};
+`
+
 func BenchmarkIsolateInitAndRun(b *testing.B) {
 	b.ReportAllocs()
 	for n := 0; n < b.N; n++ {
@@ -270,18 +285,36 @@ func BenchmarkIsolateInitAndRun(b *testing.B) {
 	}
 }
 
-const script = `
-	const process = (record) => {
-		const res = [];
-		for (let [k, v] of Object.entries(record)) {
-			res.push({
-				name: k,
-				value: v,
-			});
-		}
-		return JSON.stringify(res);
-	};
-`
+func BenchmarkIsolateCodeCache(b *testing.B) {
+	b.ReportAllocs()
+	iso := v8.NewIsolate()
+	defer iso.Dispose()
+
+	dat, err := os.ReadFile("test/url-polyfill.js")
+	require.NoError(b, err)
+
+	script, err := iso.CompileUnboundScript(string(dat), "url-polyfill.js", v8.CompileOptions{})
+	require.NoError(b, err)
+	cache := script.CreateCodeCache()
+
+	b.ResetTimer()
+
+	for n := 0; n < b.N; n++ {
+		iso := v8.NewIsolate()
+		defer iso.Dispose()
+
+		ctx := v8.NewContext(iso)
+		defer ctx.Close()
+
+		opts := v8.CompileOptions{CachedData: cache}
+		script, err := iso.CompileUnboundScript(string(dat), "url-polyfill.js", opts)
+		require.NoError(b, err)
+
+		_, err = script.Run(ctx)
+		require.NoError(b, err)
+		require.False(b, opts.CachedData.Rejected)
+	}
+}
 
 func makeObject() interface{} {
 	return map[string]interface{}{
