@@ -5,6 +5,7 @@
 [![Go Reference](https://pkg.go.dev/badge/katallaxie/v8go.svg)](https://pkg.go.dev/katallaxie/v8go)
 [![Test](https://github.com/katallaxie/v8go/actions/workflows/main.yml/badge.svg)](https://github.com/katallaxie/v8go/actions/workflows/main.yml)
 ![V8 Build](https://github.com/katallaxie/v8go/workflows/V8%20Build/badge.svg)
+[![FOSSA Status](https://app.fossa.com/api/projects/git%2Bgithub.com%2Fkatallaxie%2Fv8go.svg?type=shield&issueType=security)](https://app.fossa.com/projects/git%2Bgithub.com%2Fkatallaxie%2Fv8go?ref=badge_shield&issueType=security)
 [![codecov](https://codecov.io/gh/katallaxie/v8go/branch/master/graph/badge.svg?token=VHZwzGm3dV)](https://codecov.io/gh/katallaxie/v8go)
 
 <img src="gopher.jpg" width="200px" alt="V8 Gopher based on original artwork from the amazing Renee French" />
@@ -219,7 +220,7 @@ This project also aims to keep up-to-date with the latest (stable) release of V8
 
 ## License
 
-[![FOSSA Status](https://app.fossa.com/api/projects/custom%2B22862%2Fgit%40github.com%3Akatallaxie%2Fv8go.git.svg?type=large)](https://app.fossa.com/projects/custom%2B22862%2Fgit%40github.com%3Akatallaxie%2Fv8go.git?ref=badge_large)
+[![FOSSA Status](https://app.fossa.com/api/projects/git%2Bgithub.com%2Fkatallaxie%2Fv8go.svg?type=shield&issueType=license)](https://app.fossa.com/projects/git%2Bgithub.com%2Fkatallaxie%2Fv8go?ref=badge_shield&issueType=license)
 
 ## Development
 
