@@ -11,7 +11,6 @@ import "C"
 import (
 	"fmt"
 	"io"
-	"unsafe"
 )
 
 // JSError is an error that is returned if there is are any
@@ -29,9 +28,7 @@ func newJSError(rtnErr C.RtnError) error {
 		Location:   C.GoString(rtnErr.location),
 		StackTrace: C.GoString(rtnErr.stack),
 	}
-	C.free(unsafe.Pointer(rtnErr.msg))
-	C.free(unsafe.Pointer(rtnErr.location))
-	C.free(unsafe.Pointer(rtnErr.stack))
+	C.ErrorRelease(rtnErr)
 	return err
 }
 
@@ -40,7 +37,7 @@ func (e *JSError) Error() string {
 }
 
 // Format implements the fmt.Formatter interface to provide a custom formatter
-// primarily to output the javascript stack trace with %+v.
+// primarily to output the javascript stack trace with %+v
 func (e *JSError) Format(s fmt.State, verb rune) {
 	switch verb {
 	case 'v':
