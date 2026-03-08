@@ -58,7 +58,7 @@ jobs:
       run: cd deps && ./build_common.py
 
     - name: Upload include/ Artifacts
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         # The name matches the directory under deps/.
         name: include
@@ -168,7 +168,7 @@ jobs:
       run: ccache -s
 
     - name: Upload Artifacts
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         # The name matches the directory under deps/.
         name: ${{ matrix.os }}_${{ matrix.arch }}
