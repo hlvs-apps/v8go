@@ -54,7 +54,7 @@ jobs:
       sha: ${{ steps.commit_changelog.outputs.commit_long_sha }}
     steps:
     - name: Checkout
-      uses: actions/checkout@v4
+      uses: actions/checkout@v6
       with:
         fetch-depth: 1
         ref: ${{ inputs.sha }}
