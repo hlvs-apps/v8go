@@ -32,7 +32,6 @@ func TestValueNewBaseCases(t *testing.T) {
 }
 
 func TestValueFormatting(t *testing.T) {
-	t.Parallel()
 	ctx := v8.NewContext(nil)
 	defer ctx.Isolate().Dispose()
 	defer ctx.Close()
@@ -48,7 +47,6 @@ func TestValueFormatting(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.source, func(t *testing.T) {
 			val, _ := ctx.RunScript(tt.source, "test.js")
 			if s := fmt.Sprintf("%v", val); s != tt.defaultVerb {
@@ -68,7 +66,6 @@ func TestValueFormatting(t *testing.T) {
 }
 
 func TestValueString(t *testing.T) {
-	t.Parallel()
 	ctx := v8.NewContext(nil)
 	defer ctx.Isolate().Dispose()
 	defer ctx.Close()
@@ -86,7 +83,6 @@ func TestValueString(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			result, _ := ctx.RunScript(tt.source, "test.js")
 			str := result.String()
@@ -98,7 +94,6 @@ func TestValueString(t *testing.T) {
 }
 
 func TestNewValue(t *testing.T) {
-	t.Parallel()
 	ctx := v8.NewContext(nil)
 	iso := ctx.Isolate()
 	defer iso.Dispose()
@@ -115,7 +110,6 @@ func TestNewValue(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			val, err := ctx.RunScript(tt.predicate, "test.js")
 			if err != nil {
@@ -143,7 +137,6 @@ func TestNewValue(t *testing.T) {
 }
 
 func TestValueDetailString(t *testing.T) {
-	t.Parallel()
 	ctx := v8.NewContext(nil)
 	defer ctx.Isolate().Dispose()
 	defer ctx.Close()
@@ -160,7 +153,6 @@ func TestValueDetailString(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			result, _ := ctx.RunScript(tt.source, "test.js")
 			str := result.DetailString()
@@ -172,7 +164,6 @@ func TestValueDetailString(t *testing.T) {
 }
 
 func TestValueBoolean(t *testing.T) {
-	t.Parallel()
 	ctx := v8.NewContext(nil)
 	defer ctx.Isolate().Dispose()
 	defer ctx.Close()
@@ -195,7 +186,6 @@ func TestValueBoolean(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.source, func(t *testing.T) {
 			val, _ := ctx.RunScript(tt.source, "test.js")
 			if b := val.Boolean(); b != tt.out {
@@ -223,8 +213,6 @@ func TestValueConstants(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
-
 		val, err := ctx.RunScript(tt.source, "test.js")
 		fatalIf(t, err)
 
@@ -236,7 +224,6 @@ func TestValueConstants(t *testing.T) {
 }
 
 func TestValueArrayIndex(t *testing.T) {
-	t.Parallel()
 	ctx := v8.NewContext(nil)
 	defer ctx.Isolate().Dispose()
 	defer ctx.Close()
@@ -259,7 +246,6 @@ func TestValueArrayIndex(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.source, func(t *testing.T) {
 			val, _ := ctx.RunScript(tt.source, "test.js")
 			idx, ok := val.ArrayIndex()
@@ -274,7 +260,6 @@ func TestValueArrayIndex(t *testing.T) {
 }
 
 func TestValueInt32(t *testing.T) {
-	t.Parallel()
 	ctx := v8.NewContext(nil)
 	defer ctx.Isolate().Dispose()
 	defer ctx.Close()
@@ -302,7 +287,6 @@ func TestValueInt32(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.source, func(t *testing.T) {
 			val, _ := ctx.RunScript(tt.source, "test.js")
 			if i32 := val.Int32(); i32 != tt.expected {
@@ -313,7 +297,6 @@ func TestValueInt32(t *testing.T) {
 }
 
 func TestValueInteger(t *testing.T) {
-	t.Parallel()
 	ctx := v8.NewContext(nil)
 	defer ctx.Isolate().Dispose()
 	defer ctx.Close()
@@ -341,7 +324,6 @@ func TestValueInteger(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.source, func(t *testing.T) {
 			val, _ := ctx.RunScript(tt.source, "test.js")
 			if i64 := val.Integer(); i64 != tt.expected {
@@ -352,7 +334,6 @@ func TestValueInteger(t *testing.T) {
 }
 
 func TestValueNumber(t *testing.T) {
-	t.Parallel()
 	ctx := v8.NewContext(nil)
 	defer ctx.Isolate().Dispose()
 	defer ctx.Close()
@@ -378,7 +359,6 @@ func TestValueNumber(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.source, func(t *testing.T) {
 			val, _ := ctx.RunScript(tt.source, "test.js")
 			f64 := val.Number()
@@ -396,7 +376,6 @@ func TestValueNumber(t *testing.T) {
 }
 
 func TestValueUint32(t *testing.T) {
-	t.Parallel()
 	ctx := v8.NewContext(nil)
 	defer ctx.Isolate().Dispose()
 	defer ctx.Close()
@@ -411,7 +390,6 @@ func TestValueUint32(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.source, func(t *testing.T) {
 			val, _ := ctx.RunScript(tt.source, "test.js")
 			if u32 := val.Uint32(); u32 != tt.expected {
@@ -422,7 +400,6 @@ func TestValueUint32(t *testing.T) {
 }
 
 func TestValueBigInt(t *testing.T) {
-	t.Parallel()
 	iso := v8.NewIsolate()
 	defer iso.Dispose()
 
@@ -445,7 +422,6 @@ func TestValueBigInt(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.source, func(t *testing.T) {
 			ctx := v8.NewContext(iso)
 			defer ctx.Close()
@@ -484,8 +460,6 @@ func TestValueObject(t *testing.T) {
 }
 
 func TestValueAsSymbol(t *testing.T) {
-	t.Parallel()
-
 	ctx := v8.NewContext()
 	defer ctx.Isolate().Dispose()
 	defer ctx.Close()
@@ -510,8 +484,6 @@ func TestValueAsSymbol(t *testing.T) {
 }
 
 func TestValuePromise(t *testing.T) {
-	t.Parallel()
-
 	ctx := v8.NewContext()
 	defer ctx.Isolate().Dispose()
 	defer ctx.Close()
@@ -578,16 +550,15 @@ func TestValueSameValue(t *testing.T) {
 	obj2, err := objTempl.NewInstance(ctx)
 	fatalIf(t, err)
 
-	if obj1.Value.SameValue(obj2.Value) != false {
+	if obj1.SameValue(obj2.Value) != false {
 		t.Errorf("SameValue on two different values didn't return false")
 	}
-	if obj1.Value.SameValue(obj1.Value) != true {
+	if obj1.SameValue(obj1.Value) != true {
 		t.Errorf("SameValue on two of the same value didn't return true")
 	}
 }
 
 func TestValueIsXXX(t *testing.T) {
-	t.Parallel()
 	iso := v8.NewIsolate()
 	defer iso.Dispose()
 	tests := [...]struct {
@@ -686,7 +657,6 @@ func TestValueIsXXX(t *testing.T) {
 		{"new Proxy({},{})", (*v8.Value).IsProxy},
 	}
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.source, func(t *testing.T) {
 			ctx := v8.NewContext(iso)
 			defer ctx.Close()
@@ -706,7 +676,6 @@ func TestValueIsXXX(t *testing.T) {
 }
 
 func TestValueMarshalJSON(t *testing.T) {
-	t.Parallel()
 	iso := v8.NewIsolate()
 	defer iso.Dispose()
 
@@ -747,7 +716,6 @@ func TestValueMarshalJSON(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			ctx := v8.NewContext(iso)
 			defer ctx.Close()

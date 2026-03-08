@@ -251,8 +251,6 @@ func TestIsolateThrowException(t *testing.T) {
 }
 
 func TestNewIsolateWithConstraints(t *testing.T) {
-	t.Parallel()
-
 	iso := v8.NewIsolate(v8.WithResourceConstraints(
 		8*1024*1024,
 		16*1024*1024,
