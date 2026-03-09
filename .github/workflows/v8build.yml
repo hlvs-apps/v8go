@@ -227,14 +227,6 @@ jobs:
     - name: Update LDFLAGS in cgo.go
       run: ./deps/update_cgo.py
 
-    - name: Update Changelog
-      run: |
-        ./tools/modifychangelog.py \
-        --unchanged '- Auto-bumped V8 .*' \
-        --changed "- Auto-bumped V8 to ${{ steps.update_v8.outputs.latest_v8_version }}." \
-        --inplace \
-        CHANGELOG.md
-
     - id: commit
       name: Commit
       uses: EndBug/add-and-commit@v9
