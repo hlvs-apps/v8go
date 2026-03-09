@@ -297,13 +297,6 @@ jobs:
         echo "sha=$sha" >>"$GITHUB_OUTPUT"
         echo "short-sha=${sha::8}" >>"$GITHUB_OUTPUT"
 
-    - name: Set Up Workspace
-      # Submodules shouldn't cause a download.
-      # TODO: figure out why this isn't enough.
-      run: |
-        submods=( ${{ steps.info.outputs.submodules }} )
-        go work init . "${submods[@]}"
-
     - name: Update go.mod
       run: |
         sha="${{ steps.info.outputs.sha }}"
