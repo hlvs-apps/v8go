@@ -179,6 +179,45 @@ func printTree(nest string, node *v8.CPUProfileNode) {
 //   (garbage collector) :0:0
 ```
 
+## Benchmark
+
+Run the benchmarks via `make bench`.
+
+```bash
+go tool mvdan.cc/gofumpt -w .
+go vet ./...
+go test -bench=. | go tool golang.org/x/perf/cmd/benchstat -
+goos: linux
+goarch: arm64
+pkg: github.com/katallaxie/v8go
+                        │      -       │
+                        │    sec/op    │
+Context-8                 140.9µ ± ∞ ¹
+IsolateInitialization-8   315.4µ ± ∞ ¹
+IsolateInitAndRun-8       474.3µ ± ∞ ¹
+IsolateCodeCache-8        863.7µ ± ∞ ¹
+geomean                   367.3µ
+¹ need >= 6 samples for confidence interval at level 0.95
+
+                        │       -       │
+                        │     B/op      │
+Context-8                   769.0 ± ∞ ¹
+IsolateInitialization-8     152.0 ± ∞ ¹
+IsolateInitAndRun-8         921.0 ± ∞ ¹
+IsolateCodeCache-8        14.43Ki ± ∞ ¹
+geomean                   1.097Ki
+¹ need >= 6 samples for confidence interval at level 0.95
+
+                        │      -      │
+                        │  allocs/op  │
+Context-8                 18.00 ± ∞ ¹
+IsolateInitialization-8   5.000 ± ∞ ¹
+IsolateInitAndRun-8       23.00 ± ∞ ¹
+IsolateCodeCache-8        16.00 ± ∞ ¹
+geomean                   13.49
+¹ need >= 6 samples for confidence interval at level 0.95
+```
+
 ## Documentation
 
 Go Reference & more examples: https://pkg.go.dev/katallaxie/v8go
