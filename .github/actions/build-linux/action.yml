@@ -39,6 +39,7 @@ runs:
         echo "CCACHE_DIR=$ccacheDir" >> "$GITHUB_ENV"
 
     - run: cd deps/depot_tools && git config --unset-all remote.origin.fetch; git config --add remote.origin.fetch +refs/heads/*:refs/remotes/origin/*
+      shell: bash
 
     - name: Download V8 Source
       shell: bash
