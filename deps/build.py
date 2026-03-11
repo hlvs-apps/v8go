@@ -31,7 +31,7 @@ parser.add_argument('--arch',
 parser.add_argument(
     '--os',
     dest='os',
-    choices=['ios', 'linux', 'darwin', 'windows'],
+    choices=['android', 'ios', 'linux', 'darwin', 'windows'],
     default=platform.system().lower())
 args = parser.parse_args()
 
@@ -50,6 +50,9 @@ def get_custom_deps():
         "v8/tools/gyp"                          : None,
         "v8/tools/luci-go"                      : None,
     }
+    if args.os != "android":
+        deps["v8/third_party/catapult"] = None
+        deps["v8/third_party/android_tools"] = None
     return deps
 
 gclient_sln = [
