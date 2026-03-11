@@ -2,8 +2,6 @@ go 1.25.1
 
 use (
 	.
-	./deps/android_amd64
-	./deps/android_arm64
 	./deps/darwin_amd64
 	./deps/darwin_arm64
 	./deps/linux_amd64
