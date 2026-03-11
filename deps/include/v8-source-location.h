@@ -6,12 +6,21 @@
 #define INCLUDE_SOURCE_LOCATION_H_
 
 #include <cstddef>
-#include <source_location>
 #include <string>
 
 #include "v8config.h"  // NOLINT(build/include_directory)
 
+#if defined(__has_builtin)
+#define V8_SUPPORTS_SOURCE_LOCATION                                      \
+  (__has_builtin(__builtin_FUNCTION) && __has_builtin(__builtin_FILE) && \
+   __has_builtin(__builtin_LINE))  // NOLINT
+#elif defined(V8_CC_GNU) && __GNUC__ >= 7
 #define V8_SUPPORTS_SOURCE_LOCATION 1
+#elif defined(V8_CC_INTEL) && __ICC >= 1800
+#define V8_SUPPORTS_SOURCE_LOCATION 1
+#else
+#define V8_SUPPORTS_SOURCE_LOCATION 0
+#endif
 
 namespace v8 {
 
@@ -22,21 +31,18 @@ namespace v8 {
 class V8_EXPORT SourceLocation final {
  public:
   /**
-   * Constructs source location information corresponding to the location of the
+   * Construct source location information corresponding to the location of the
    * call site.
    */
+#if V8_SUPPORTS_SOURCE_LOCATION
   static constexpr SourceLocation Current(
-      const std::source_location& loc = std::source_location::current()) {
-    return SourceLocation(loc);
-  }
-#ifdef DEBUG
-  static constexpr SourceLocation CurrentIfDebug(
-      const std::source_location& loc = std::source_location::current()) {
-    return SourceLocation(loc);
+      const char* function = __builtin_FUNCTION(),
+      const char* file = __builtin_FILE(), size_t line = __builtin_LINE()) {
+    return SourceLocation(function, file, line);
   }
 #else
-  static constexpr SourceLocation CurrentIfDebug() { return {}; }
-#endif
+  static constexpr SourceLocation Current() { return SourceLocation(); }
+#endif  // V8_SUPPORTS_SOURCE_LOCATION
 
   /**
    * Constructs unspecified source location information.
@@ -49,41 +55,41 @@ class V8_EXPORT SourceLocation final {
    *
    * \returns the function name as cstring.
    */
-  constexpr const char* Function() const { return loc_.function_name(); }
+  constexpr const char* Function() const { return function_; }
 
   /**
    * Returns the name of the current source file represented by this object.
    *
    * \returns the file name as cstring.
    */
-  constexpr const char* FileName() const { return loc_.file_name(); }
+  constexpr const char* FileName() const { return file_; }
 
   /**
    * Returns the line number represented by this object.
    *
    * \returns the line number.
    */
-  constexpr size_t Line() const { return loc_.line(); }
+  constexpr size_t Line() const { return line_; }
 
   /**
    * Returns a human-readable string representing this object.
    *
    * \returns a human-readable string representing source location information.
    */
-  std::string ToString() const;
-
-  /**
-   * Checks whether this object is initialized.
-   *
-   * \returns true if this object is initialized, false otherwise.
-   */
-  operator bool() const { return loc_.line() != 0; }
+  std::string ToString() const {
+    if (!file_) {
+      return {};
+    }
+    return std::string(function_) + "@" + file_ + ":" + std::to_string(line_);
+  }
 
  private:
-  constexpr explicit SourceLocation(const std::source_location& loc)
-      : loc_(loc) {}
+  constexpr SourceLocation(const char* function, const char* file, size_t line)
+      : function_(function), file_(file), line_(line) {}
 
-  std::source_location loc_;
+  const char* function_ = nullptr;
+  const char* file_ = nullptr;
+  size_t line_ = 0u;
 };
 
 }  // namespace v8

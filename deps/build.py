@@ -75,9 +75,6 @@ target_cpu="%s"
 v8_target_cpu="%s"
 clang_use_chrome_plugins=false
 use_custom_libcxx=false
-use_clang_modules=false
-use_libcxx_modules=false
-use_allocator_shim=false
 use_sysroot=false
 use_glib=false
 symbol_level=%s
@@ -122,11 +119,6 @@ def build_gn_args():
         symbol_level,
         str(strip_debug_info).lower(),
     )
-    if args.os == "android":
-        # Newer V8 uses std::atomic_ref in src/base/memcopy.h. The Android
-        # NDK libc++ in this toolchain does not provide it, but Chromium's
-        # bundled libc++ does.
-        gnargs += 'use_custom_libcxx=true\n'
     if args.ccache:
         gnargs += 'cc_wrapper="ccache"\n'
     if not is_clang and arch == "arm64":

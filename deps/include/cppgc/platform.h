@@ -165,7 +165,7 @@ V8_EXPORT void ShutdownProcess();
 namespace internal {
 
 V8_EXPORT void Fatal(const std::string& reason = std::string(),
-                     SourceLocation = SourceLocation::Current());
+                     const SourceLocation& = SourceLocation::Current());
 
 }  // namespace internal
 
