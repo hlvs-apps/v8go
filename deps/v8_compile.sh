@@ -12,13 +12,7 @@ if [ ! -d "$v8_dir" ]; then
   exit 1
 fi
 
-depot_tools_dir="${v8_dir}/third_party/depot_tools"
-
-if [ ! -d "$depot_tools_dir" ]; then
-  depot_tools_dir="${dir}/depot_tools"
-fi
-
-PATH="${depot_tools_dir}:$PATH"
+PATH="${DEPOT_TOOLS_DIR}:$PATH"
 export PATH
 
 os=""
