@@ -51,19 +51,19 @@ jobs:
         fi
 
   build:
-    name: Run V8 Build
+    name: Run V8 Buildc++20
     needs: upgrade
     if: ${{ needs.upgrade.outputs.has_upgrade == 'true' }}
     uses: ./.github/workflows/v8build.yml
     with:
       v8_hash: ${{ needs.upgrade.outputs.latest_v8_hash }}
 
-  release:
-    name: Make A Release
-    needs: build
-    if: ${{ needs.build.outputs.committed == 'true' && github.ref == 'refs/heads/master' }}
-    uses: ./.github/workflows/release.yml
-    with:
-      draft: false
-      version: '+0.1.0'
-      sha: ${{ needs.build.outputs.sha }}
+  # release:
+  #   name: Make A Release
+  #   needs: build
+  #   if: ${{ needs.build.outputs.committed == 'true' && github.ref == 'refs/heads/master' }}
+  #   uses: ./.github/workflows/release.yml
+  #   with:
+  #     draft: false
+  #     version: '+0.1.0'
+  #     sha: ${{ needs.build.outputs.sha }}
