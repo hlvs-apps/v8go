@@ -55,13 +55,13 @@ jobs:
 
       - name: Build Release for Linux
         if: startsWith(matrix.platform, 'ubuntu')
-        uses: .github/workflows/build_linux.yml
+        uses: ./.github/workflows/build_linux.yml
         with:
           target-arch: ${{ matrix.arch }}
 
       - name: Build Release for macOS
         if: startsWith(matrix.platform, 'macos')
-        uses: .github/workflows/build_macos.yml
+        uses: ./.github/workflows/build_macos.yml
         with:
           target-arch: ${{ matrix.arch }}
 
