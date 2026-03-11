@@ -21,12 +21,12 @@ replace (
 )
 
 require (
-	github.com/katallaxie/v8go/deps/android_amd64 v0.0.0-00010101000000-000000000000
-	github.com/katallaxie/v8go/deps/android_arm64 v0.0.0-00010101000000-000000000000
-	github.com/katallaxie/v8go/deps/darwin_amd64 v0.0.0-00010101000000-000000000000
-	github.com/katallaxie/v8go/deps/darwin_arm64 v0.0.0-00010101000000-000000000000
-	github.com/katallaxie/v8go/deps/linux_amd64 v0.0.0-00010101000000-000000000000
-	github.com/katallaxie/v8go/deps/linux_arm64 v0.0.0-00010101000000-000000000000
+	github.com/katallaxie/v8go/deps/android_amd64 v0.0.0-20260311054308-aa8d48711689
+	github.com/katallaxie/v8go/deps/android_arm64 v0.0.0-20260311054308-aa8d48711689
+	github.com/katallaxie/v8go/deps/darwin_amd64 v0.0.0-20260311054308-aa8d48711689
+	github.com/katallaxie/v8go/deps/darwin_arm64 v0.0.0-20260311054308-aa8d48711689
+	github.com/katallaxie/v8go/deps/linux_amd64 v0.0.0-20260311054308-aa8d48711689
+	github.com/katallaxie/v8go/deps/linux_arm64 v0.0.0-20260311054308-aa8d48711689
 	github.com/stretchr/testify v1.11.1
 )
 
