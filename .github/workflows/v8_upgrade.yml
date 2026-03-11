@@ -49,10 +49,6 @@ jobs:
           clean: true
           fetch-depth: 1
 
-      - name: Update depot_tools fetch config
-        run: cd deps/depot_tools && git config --unset-all remote.origin.fetch; git config --add remote.origin.fetch +refs/heads/*:refs/remotes/origin/*
-        shell: bash
-
       - name: Update version file
         shell: bash
         run: echo -n "${{ needs.upgrade.outputs.v8_version }}" > deps/VERSION
