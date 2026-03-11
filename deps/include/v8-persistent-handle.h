@@ -46,11 +46,7 @@ class Eternal : public api_internal::IndirectHandleBase {
  public:
   V8_INLINE Eternal() = default;
 
-  /**
-   * Constructor for handling automatic up casting.
-   */
   template <class S>
-    requires(std::is_base_of_v<T, S>)
   V8_INLINE Eternal(Isolate* isolate, Local<S> handle) {
     Set(isolate, handle);
   }
@@ -63,8 +59,8 @@ class Eternal : public api_internal::IndirectHandleBase {
   }
 
   template <class S>
-    requires(std::is_base_of_v<T, S>)
   void Set(Isolate* isolate, Local<S> handle) {
+    static_assert(std::is_base_of<T, S>::value, "type check");
     slot() =
         api_internal::Eternalize(isolate, *handle.template UnsafeAs<Value>());
   }
@@ -255,26 +251,28 @@ class Persistent : public PersistentBase<T> {
   V8_INLINE Persistent() = default;
 
   /**
-   * Construct a Persistent from a Local with automatic up casting.
+   * Construct a Persistent from a Local.
    * When the Local is non-empty, a new storage cell is created
    * pointing to the same object, and no flags are set.
    */
   template <class S>
-    requires(std::is_base_of_v<T, S>)
   V8_INLINE Persistent(Isolate* isolate, Local<S> that)
       : PersistentBase<T>(
-            PersistentBase<T>::New(isolate, that.template value<S>())) {}
+            PersistentBase<T>::New(isolate, that.template value<S>())) {
+    static_assert(std::is_base_of<T, S>::value, "type check");
+  }
 
   /**
-   * Construct a Persistent from a Persistent with automatic up casting.
+   * Construct a Persistent from a Persistent.
    * When the Persistent is non-empty, a new storage cell is created
    * pointing to the same object, and no flags are set.
    */
   template <class S, class M2>
-    requires(std::is_base_of_v<T, S>)
   V8_INLINE Persistent(Isolate* isolate, const Persistent<S, M2>& that)
       : PersistentBase<T>(
-            PersistentBase<T>::New(isolate, that.template value<S>())) {}
+            PersistentBase<T>::New(isolate, that.template value<S>())) {
+    static_assert(std::is_base_of<T, S>::value, "type check");
+  }
 
   /**
    * The copy constructors and assignment operator create a Persistent
@@ -354,26 +352,28 @@ class Global : public PersistentBase<T> {
   V8_INLINE Global() = default;
 
   /**
-   * Construct a Global from a Local with automatic up casting.
+   * Construct a Global from a Local.
    * When the Local is non-empty, a new storage cell is created
    * pointing to the same object, and no flags are set.
    */
   template <class S>
-    requires(std::is_base_of_v<T, S>)
   V8_INLINE Global(Isolate* isolate, Local<S> that)
       : PersistentBase<T>(
-            PersistentBase<T>::New(isolate, that.template value<S>())) {}
+            PersistentBase<T>::New(isolate, that.template value<S>())) {
+    static_assert(std::is_base_of<T, S>::value, "type check");
+  }
 
   /**
-   * Construct a Global from a PersistentBase with automatic up casting.
+   * Construct a Global from a PersistentBase.
    * When the Persistent is non-empty, a new storage cell is created
    * pointing to the same object, and no flags are set.
    */
   template <class S>
-    requires(std::is_base_of_v<T, S>)
   V8_INLINE Global(Isolate* isolate, const PersistentBase<S>& that)
       : PersistentBase<T>(
-            PersistentBase<T>::New(isolate, that.template value<S>())) {}
+            PersistentBase<T>::New(isolate, that.template value<S>())) {
+    static_assert(std::is_base_of<T, S>::value, "type check");
+  }
 
   /**
    * Move constructor.

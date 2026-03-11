@@ -8,7 +8,6 @@
 #include <type_traits>
 #include <utility>
 
-#include "cppgc/internal/conditional-stack-allocated.h"  // NOLINT(build/include_directory)
 #include "v8-internal.h"  // NOLINT(build/include_directory)
 #include "v8config.h"     // NOLINT(build/include_directory)
 
@@ -30,7 +29,7 @@ V8_EXPORT void FromJustIsNothing();
  * "Nothing" value is returned.
  */
 template <class T>
-class Maybe : public cppgc::internal::ConditionalStackAllocatedBase<T> {
+class Maybe {
  public:
   V8_INLINE bool IsNothing() const { return !has_value_; }
   V8_INLINE bool IsJust() const { return has_value_; }

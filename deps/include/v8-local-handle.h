@@ -179,13 +179,7 @@ class LocalBase : public api_internal::DirectHandleBase {
   }
 
   V8_INLINE static LocalBase<T> FromSlot(internal::Address* slot) {
-    if (slot == nullptr) return LocalBase<T>();
     return LocalBase<T>(*slot);
-  }
-
-  V8_INLINE static LocalBase<T> FromRepr(
-      internal::ValueHelper::InternalRepresentationType repr) {
-    return LocalBase<T>(repr);
   }
 };
 
@@ -218,11 +212,6 @@ class LocalBase : public api_internal::IndirectHandleBase {
 
   V8_INLINE static LocalBase<T> FromSlot(internal::Address* slot) {
     return LocalBase<T>(slot);
-  }
-
-  V8_INLINE static LocalBase<T> FromRepr(
-      internal::ValueHelper::InternalRepresentationType repr) {
-    return LocalBase<T>(repr);
   }
 };
 
@@ -266,19 +255,17 @@ class V8_TRIVIAL_ABI Local : public LocalBase<T>,
 #endif
 {
  public:
-  /**
-   * Default constructor: Returns an empty handle.
-   */
   V8_INLINE Local() = default;
 
-  /**
-   * Constructor for handling automatic up casting.
-   * Ex. Local<Object> can be passed when Local<Value> is expected but not
-   * the other way round.
-   */
   template <class S>
-    requires std::is_base_of_v<T, S>
-  V8_INLINE Local(Local<S> that) : LocalBase<T>(that) {}
+  V8_INLINE Local(Local<S> that) : LocalBase<T>(that) {
+    /**
+     * This check fails when trying to convert between incompatible
+     * handles. For example, converting from a Local<String> to a
+     * Local<Number>.
+     */
+    static_assert(std::is_base_of<T, S>::value, "type check");
+  }
 
   V8_INLINE T* operator->() const { return this->template value<T>(); }
 
@@ -318,7 +305,7 @@ class V8_TRIVIAL_ABI Local : public LocalBase<T>,
   /**
    * Cast a handle to a subclass, e.g. Local<Value> to Local<Object>.
    * This is only valid if the handle actually refers to a value of the
-   * target type or if the handle is empty.
+   * target type.
    */
   template <class S>
   V8_INLINE static Local<T> Cast(Local<S> that) {
@@ -334,7 +321,7 @@ class V8_TRIVIAL_ABI Local : public LocalBase<T>,
   /**
    * Calling this is equivalent to Local<S>::Cast().
    * In particular, this is only valid if the handle actually refers to a value
-   * of the target type or if the handle is empty.
+   * of the target type.
    */
   template <class S>
   V8_INLINE Local<S> As() const {
@@ -409,11 +396,6 @@ class V8_TRIVIAL_ABI Local : public LocalBase<T>,
 
   V8_INLINE explicit Local(const LocalBase<T>& other) : LocalBase<T>(other) {}
 
-  V8_INLINE static Local<T> FromRepr(
-      internal::ValueHelper::InternalRepresentationType repr) {
-    return Local<T>(LocalBase<T>::FromRepr(repr));
-  }
-
   V8_INLINE static Local<T> FromSlot(internal::Address* slot) {
     return Local<T>(LocalBase<T>::FromSlot(slot));
   }
@@ -474,9 +456,11 @@ class StrongRootAllocator<LocalUnchecked<T>> : public StrongRootAllocatorBase {
   static_assert(std::is_standard_layout_v<value_type>);
   static_assert(sizeof(value_type) == sizeof(Address));
 
-  template <typename HeapOrIsolateT>
-  explicit StrongRootAllocator(HeapOrIsolateT* heap_or_isolate)
-      : StrongRootAllocatorBase(heap_or_isolate) {}
+  explicit StrongRootAllocator(Heap* heap) : StrongRootAllocatorBase(heap) {}
+  explicit StrongRootAllocator(Isolate* isolate)
+      : StrongRootAllocatorBase(isolate) {}
+  explicit StrongRootAllocator(v8::Isolate* isolate)
+      : StrongRootAllocatorBase(reinterpret_cast<Isolate*>(isolate)) {}
   template <typename U>
   StrongRootAllocator(const StrongRootAllocator<U>& other) noexcept
       : StrongRootAllocatorBase(other) {}
@@ -582,11 +566,7 @@ class LocalVector {
 
   void push_back(const Local<T>& x) { backing_.push_back(x); }
   void pop_back() { backing_.pop_back(); }
-
-  template <typename... Args>
-  void emplace_back(Args&&... args) {
-    backing_.push_back(value_type{std::forward<Args>(args)...});
-  }
+  void emplace_back(const Local<T>& x) { backing_.emplace_back(x); }
 
   void clear() noexcept { backing_.clear(); }
   void resize(size_t n) { backing_.resize(n); }
@@ -634,22 +614,9 @@ using Handle = Local<T>;
 template <class T>
 class MaybeLocal {
  public:
-  /**
-   * Default constructor: Returns an empty handle.
-   */
-  V8_INLINE MaybeLocal() = default;
-  /**
-   * Implicitly construct MaybeLocal from Local.
-   */
+  V8_INLINE MaybeLocal() : local_() {}
   template <class S>
-    requires std::is_base_of_v<T, S>
   V8_INLINE MaybeLocal(Local<S> that) : local_(that) {}
-  /**
-   * Implicitly up-cast MaybeLocal<S> to MaybeLocal<T> if T is a base of S.
-   */
-  template <class S>
-    requires std::is_base_of_v<T, S>
-  V8_INLINE MaybeLocal(MaybeLocal<S> that) : local_(that.local_) {}
 
   V8_INLINE bool IsEmpty() const { return local_.IsEmpty(); }
 
@@ -684,17 +651,23 @@ class MaybeLocal {
   /**
    * Cast a handle to a subclass, e.g. MaybeLocal<Value> to MaybeLocal<Object>.
    * This is only valid if the handle actually refers to a value of the target
-   * type or if the handle is empty.
+   * type.
    */
   template <class S>
   V8_INLINE static MaybeLocal<T> Cast(MaybeLocal<S> that) {
-    return MaybeLocal<T>{Local<T>::Cast(that.local_)};
+#ifdef V8_ENABLE_CHECKS
+    // If we're going to perform the type check then we have to check
+    // that the handle isn't empty before doing the checked cast.
+    if (that.IsEmpty()) return MaybeLocal<T>();
+    T::Cast(that.local_.template value<S>());
+#endif
+    return MaybeLocal<T>(that.local_);
   }
 
   /**
    * Calling this is equivalent to MaybeLocal<S>::Cast().
    * In particular, this is only valid if the handle actually refers to a value
-   * of the target type or if the handle is empty.
+   * of the target type.
    */
   template <class S>
   V8_INLINE MaybeLocal<S> As() const {
