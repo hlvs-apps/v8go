@@ -12,6 +12,9 @@ if [ ! -d "$v8_dir" ]; then
   exit 1
 fi
 
+PATH="${dir}/depot_tools:$PATH"
+export PATH
+
 os=""
 case "$(uname -s)" in
   Linux)
