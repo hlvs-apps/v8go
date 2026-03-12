@@ -12,8 +12,16 @@ if [ ! -d "$v8_dir" ]; then
   exit 1
 fi
 
-PATH="${DEPOT_TOOLS_DIR}:$PATH"
+depot_tools_dir="${v8_dir}/third_party/depot_tools"
+
+if [ ! -d "$depot_tools_dir" ]; then
+  depot_tools_dir="${dir}/depot_tools"
+fi
+
+PATH="${depot_tools_dir}:$PATH"
 export PATH
+
+update_depot_tools
 
 os=""
 case "$(uname -s)" in
