@@ -96,7 +96,6 @@ exclude_unwind_tables=true
 v8_android_log_stdout=true
 enable_crel=false
 v8_enable_temporal_support=false
-use_lld=false
 """
 
 
@@ -141,12 +140,8 @@ def build_gn_args():
         # V8 itself fixed this in https://chromium-review.googlesource.com/c/v8/v8/+/3930160.
         gnargs += 'arm_control_flow_integrity="none"\n'
 
-    # Explicitly disable CREL format and use traditional ELF format
-    gnargs += 'enable_crel=false\n'
-    gnargs += 'use_lld=false\n'
-    # Force traditional ar format
-    if args.os == "linux":
-        gnargs += 'use_gold=false\n'
+    # Explicitly disable crel format for the output archives, as some versions of llvm-ar default to it and it is not widely supported by other tools.
+    gnargs += 'crel="false"\n'
 
     return gnargs
 
@@ -226,21 +221,12 @@ def split_ar(src_fn, dest_fn, dest_obj_dn):
     """
     dest_path = os.path.dirname(dest_fn)
 
-    # Force system ar to avoid CREL format issues
-    if args.os == "linux":
-        if args.arch == "arm64":
-            ar_path = "aarch64-linux-gnu-ar"
-        else:
-            ar_path = "ar"  # Use system ar instead of llvm-ar
-    else:
-        # For other platforms, try llvm-ar but fall back to system ar
-        ar_path = os.path.abspath(os.path.join(
-            v8_path, "third_party/llvm-build/Release+Asserts/bin/llvm-ar"))
-        if not os.access(ar_path, os.X_OK):
-            ar_path = "ar"
-
-    # Force traditional archive format, not CREL
-    ar_format_args = ["qsc"]  # Use traditional format explicitly
+    ar_path = os.path.abspath(os.path.join(
+        v8_path, "third_party/llvm-build/Release+Asserts/bin/llvm-ar"))
+    if args.os == "linux" and args.arch == "arm64" and not is_clang:
+        ar_path = "aarch64-linux-gnu-ar"
+    elif not os.access(ar_path, os.X_OK) or not is_clang:
+        ar_path = "ar"
 
     if os.path.exists(dest_obj_dn):
         shutil.rmtree(dest_obj_dn)
@@ -301,30 +287,18 @@ def split_ar(src_fn, dest_fn, dest_obj_dn):
     dest_fns = []
     for i, files in enumerate(file_groups):
         if len(file_groups) == 1:
-            dest_fn_current = "{}{}".format(dest_stem, dest_ext)
+            dest_fn = "{}{}".format(dest_stem, dest_ext)
         else:
-            dest_fn_current = "{}-{}{}".format(dest_stem, i, dest_ext)
+            dest_fn = "{}-{}{}".format(dest_stem, i, dest_ext)
 
-        dest_fns.append(os.path.relpath(dest_fn_current, dest_path))
-
-        # Use traditional ar format (not CREL)
+        dest_fns.append(os.path.relpath(dest_fn, dest_path))
         subprocess_check_call(
-            [ar_path] + ar_format_args + [
-                os.path.relpath(dest_fn_current, dest_path),
+            [
+                ar_path,
+                "qsc",
+                os.path.relpath(dest_fn, dest_path),
             ] + files,
             cwd=dest_path)
-
-        # Verify the created archive format
-        if args.verbose:
-            try:
-                # Check if archive is in traditional format
-                result = subprocess_check_output_text(
-                    [ar_path, "t", os.path.relpath(dest_fn_current, dest_path)], cwd=dest_path)
-                print(
-                    f"Created archive {dest_fn_current} with {len(result.splitlines())} objects", file=sys.stderr)
-            except:
-                print(
-                    f"Warning: Could not verify archive format for {dest_fn_current}", file=sys.stderr)
 
     with open(os.path.join(dest_path, "libmanifest"), "wt") as f:
         for dest_fn in dest_fns:
@@ -419,27 +393,13 @@ def copy_libcxx(build_path, dest_path):
 
         # Extract object files and list them
         obj_files = subprocess_check_output_text(
+            [ar_path, "t", src], cwd=build_path).splitlines()
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    # Check if archive is in regular format            try:        if args.verbose:        # Verify the created archive format        subprocess_check_call([ar_path, "qcs", dest] + obj_files, cwd=build_path)            os.unlink(dest)        if os.path.exists(dest):        # Create a regular (non-thin) archive            [ar_path, "t", src], cwd=build_path).splitlines()                              obj_files, cwd=build_path)
-    main()if __name__ == "__main__": print(f"Warning: Could not verify archive format for {dest_name}", file=sys.stderr) except: print(f"Created regular archive {dest_name} with {len(result.splitlines())} objects", file=sys.stderr)                result=subprocess_check_output_text([ar_path, "t", dest], cwd=build_path)
+        # Create a regular (non-thin) archive
+        if os.path.exists(dest):
+            os.unlink(dest)
+        subprocess_check_call([ar_path, "qcs", dest] +
+                              obj_files, cwd=build_path)
 
 
 if __name__ == "__main__":
