@@ -24,6 +24,9 @@ runs:
       with:
         python-version: '3.13' # https://chromium.googlesource.com/chromium/tools/depot_tools.git/+/refs/heads/main/README.md
 
+    - if: matrix.os == 'linux' && matrix.arch == 'arm64'
+      run: sudo apt update && sudo apt install g++-aarch64-linux-gnu -y
+
     - name: Setup Build Tools
       shell: bash
       run: |
