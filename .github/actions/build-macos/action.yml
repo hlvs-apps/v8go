@@ -22,7 +22,7 @@ runs:
     - name: Setup Python
       uses: actions/setup-python@v5
       with:
-        python-version: '3.8' # https://chromium.googlesource.com/chromium/tools/depot_tools.git/+/refs/heads/main/README.md
+        python-version: '3.13' # https://chromium.googlesource.com/chromium/tools/depot_tools.git/+/refs/heads/main/README.md
 
     - name: Setup Build Tools
       shell: bash

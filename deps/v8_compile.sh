@@ -21,8 +21,6 @@ fi
 PATH="${depot_tools_dir}:$PATH"
 export PATH
 
-update_depot_tools
-
 os=""
 case "$(uname -s)" in
   Linux)
