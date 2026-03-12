@@ -21,6 +21,15 @@ fi
 PATH="${depot_tools_dir}:$PATH"
 export PATH
 
+# Update depot_tools using update_depot_tools.py, which is the recommended way to update depot_tools
+update_depot_tools_script="${depot_tools_dir}/update_depot_tools.py"
+if [ -f "$update_depot_tools_script" ]; then
+  python3 "$update_depot_tools_script"
+else
+  echo "update_depot_tools.py not found at $update_depot_tools_script"
+  exit 1
+fi
+
 os=""
 case "$(uname -s)" in
   Linux)
