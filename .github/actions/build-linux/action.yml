@@ -26,6 +26,7 @@ runs:
 
     - if: matrix.os == 'linux' && matrix.arch == 'arm64'
       run: sudo apt update && sudo apt install g++-aarch64-linux-gnu -y
+      shell: bash
 
     - name: Setup Build Tools
       shell: bash
