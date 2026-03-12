@@ -2,6 +2,7 @@
 
 #include "deps/include/v8-context.h"
 #include "deps/include/v8-function.h"
+#include "deps/include/v8-external.h"
 #include "isolate-macros.h"
 #include "template-macros.h"
 #include "template.h"
