@@ -52,6 +52,9 @@ jobs:
       - name: Update version file
         shell: bash
         run: echo -n "${{ needs.upgrade.outputs.v8_version }}" > deps/VERSION
+      
+      - if: matrix.os == 'linux' && matrix.arch == 'arm64'
+        run: sudo apt update && sudo apt install g++-aarch64-linux-gnu -y
 
       - name: Build Release for Linux
         if: startsWith(matrix.platform, 'ubuntu')
