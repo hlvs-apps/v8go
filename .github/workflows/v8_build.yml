@@ -94,28 +94,17 @@ jobs:
         # https://stackoverflow.com/a/76469774
         PIP_BREAK_SYSTEM_PACKAGES: '1'
 
-    - name: Install CCache
-      if: matrix.platform == 'ubuntu-latest'
-      run: |
-        sudo apt-get update
-        sudo apt-get install -yq ccache
-        sudo update-ccache-symlinks
-
-        echo "/usr/lib/ccache" >> "$GITHUB_PATH"
-
-    - name: Install CCache
-      if: matrix.platform == 'macos-latest'
-      run: |
-        brew install ccache
-
-        echo "$(brew --prefix ccache)/libexec" >> "$GITHUB_PATH"
-
     - name: Checkout
       uses: actions/checkout@v4
       with:
         submodules: true
         fetch-depth: 1
         ref: ${{ inputs.sha }}
+    
+    - name: ccache
+      uses: hendrikmuhs/ccache-action@v1.2
+      with:
+        key: libv8:ccache:${{ matrix.os }}:${{ matrix.arch }}:${{ hashFiles('deps/v8_hash') }}:${{ runner.os }}
 
     - name: Update to latest V8
       run: |
@@ -133,39 +122,11 @@ jobs:
           done
         fi
 
-    - name: Configure CCache
-      run: |
-        ccacheDir="$HOME/.ccache"
-        mkdir -p "$ccacheDir"
-        echo "CCACHE_DIR=$ccacheDir" >> "$GITHUB_ENV"
-        echo "CCACHE_CPP2=yes" >> "$GITHUB_ENV"
-        echo "CCACHE_SLOPPINESS=time_macros" >> "$GITHUB_ENV"
-
-    - name: Restore CCache
-      uses: actions/cache@v4
-      with:
-        path: ~/.ccache
-        key: libv8:ccache:${{ matrix.os }}:${{ matrix.arch }}:${{ hashFiles('deps/v8_hash') }}:${{ runner.os }}
-        restore-keys: |
-          libv8:ccache:${{ matrix.os }}:${{ matrix.arch }}:
-          ${{ runner.os }}:${{ matrix.os }}:${{ matrix.arch }}:libv8:ccache
-
-    - name: Restore V8 Build Cache
-      uses: actions/cache@v4
-      with:
-        path: deps/v8/build
-        key: libv8:v8build:${{ matrix.os }}:${{ matrix.arch }}:${{ hashFiles('deps/v8_hash') }}:${{ runner.os }}
-        restore-keys: |
-          libv8:v8build:${{ matrix.os }}:${{ matrix.arch }}:
-
     - name: Update depot_tools fetch config
       run: cd deps/depot_tools && git config --unset-all remote.origin.fetch; git config --add remote.origin.fetch +refs/heads/*:refs/remotes/origin/*
 
     - name: Build V8 (${{ matrix.os }})
       run: cd deps && ./build.py --ccache --verbose --arch ${{ matrix.arch }} --os ${{ matrix.os }}
-
-    - name: Show CCache Status
-      run: ccache -s
 
     - name: Upload Artifacts
       uses: actions/upload-artifact@v4
