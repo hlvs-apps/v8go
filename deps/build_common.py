@@ -26,52 +26,61 @@ v8_path = os.path.join(deps_path, "v8")
 v8_include_path = os.path.join(v8_path, "include")
 deps_include_path = os.path.join(deps_path, "include")
 
+
 def get_directories_names(path):
-  flist = []
-  for p in pathlib.Path(path).iterdir():
-    if p.is_dir():
-        flist.append(p.name)
-  return sorted(flist)
+    flist = []
+    for p in pathlib.Path(path).iterdir():
+        if p.is_dir():
+            flist.append(p.name)
+    return sorted(flist)
+
 
 def get_module_name():
-  gomod = subprocess.check_output(["go", "mod", "edit", "-print"], cwd=deps_path, env=env).decode('utf-8')
-  return [line.split(" ")[1].strip() for line in gomod.strip().splitlines() if line.startswith("module ")][0]
+    gomod = subprocess.check_output(
+        ["go", "mod", "edit", "-print"], cwd=deps_path, env=env).decode('utf-8')
+    return [line.split(" ")[1].strip() for line in gomod.strip().splitlines() if line.startswith("module ")][0]
+
 
 def package_name(module, package, index, total):
-  name = f'_ "{module}/deps/include/{package}"'
-  if index + 1 == total:
-    return name
-  else:
-    return name + '\n'
+    name = f'_ "{module}/deps/include/{package}"'
+    if index + 1 == total:
+        return name
+    else:
+        return name + '\n'
+
 
 def create_include_vendor_file(src_path, directories, module):
-  package_names = []
-  total_directories = len(directories)
+    package_names = []
+    total_directories = len(directories)
 
-  for index, directory_name in enumerate(directories):
-    package_names.append(package_name(module, directory_name, index, total_directories))
+    for index, directory_name in enumerate(directories):
+        package_names.append(package_name(
+            module, directory_name, index, total_directories))
 
-  with open(os.path.join(src_path, 'vendor.go'), 'w') as temp_file:
-      temp_file.write(include_vendor_file_template % ('\t'.join(package_names)))
+    with open(os.path.join(src_path, 'vendor.go'), 'w') as temp_file:
+        temp_file.write(include_vendor_file_template %
+                        ('\t'.join(package_names)))
+
 
 def create_vendor_files(src_path, module):
-  directories = get_directories_names(src_path)
+    directories = get_directories_names(src_path)
 
-  create_include_vendor_file(src_path, directories, module)
+    create_include_vendor_file(src_path, directories, module)
 
-  for directory in directories:
-    directory_path = os.path.join(src_path, directory)
+    for directory in directories:
+        directory_path = os.path.join(src_path, directory)
 
-    vendor_go_file_path = os.path.join(directory_path, 'vendor.go')
+        vendor_go_file_path = os.path.join(directory_path, 'vendor.go')
 
-    if os.path.isfile(vendor_go_file_path):
-      continue
+        if os.path.isfile(vendor_go_file_path):
+            continue
 
-    with open(os.path.join(directory_path, 'vendor.go'), 'w') as temp_file:
-      temp_file.write(vendor_file_template % (directory, directory))
+        with open(os.path.join(directory_path, 'vendor.go'), 'w') as temp_file:
+            temp_file.write(vendor_file_template % (directory, directory))
+
 
 if __name__ == "__main__":
-  module = get_module_name()
-  shutil.rmtree(deps_include_path)
-  shutil.copytree(v8_include_path, deps_include_path, dirs_exist_ok=True)
-  create_vendor_files(deps_include_path, module)
+    module = get_module_name()
+    shutil.rmtree(deps_include_path)
+    shutil.copytree(v8_include_path, deps_include_path, dirs_exist_ok=True)
+    create_vendor_files(deps_include_path, module)

@@ -23,11 +23,11 @@ parser.set_defaults(clang=None)
 # Symbol indices can add 15% in the final .ar, so we need margin.
 parser.add_argument('--max-file-size', default=int(40e6))
 parser.add_argument('--arch',
-    dest='arch',
-    action='store',
-    choices=valid_archs,
-    default=default_arch,
-    required=default_arch is None)
+                    dest='arch',
+                    action='store',
+                    choices=valid_archs,
+                    default=default_arch,
+                    required=default_arch is None)
 parser.add_argument(
     '--os',
     dest='os',
@@ -39,32 +39,36 @@ deps_path = os.path.dirname(os.path.realpath(__file__))
 v8_path = os.path.join(deps_path, "v8")
 tools_path = os.path.join(deps_path, "depot_tools")
 is_windows = platform.system().lower() == "windows"
-is_clang = args.clang if args.clang is not None else args.os != "linux"
+# Chromium defaults to clang on Linux for x86_64/arm64.
+# GCC is only used for s390x, ppc, mips, riscv which we don't support.
+is_clang = args.clang if args.clang is not None else True
+
 
 def get_custom_deps():
     # These deps are unnecessary for building.
     deps = {
-        "v8/testing/gmock"                      : None,
-        "v8/test/wasm-js"                       : None,
-        "v8/third_party/colorama/src"           : None,
-        "v8/tools/gyp"                          : None,
-        "v8/tools/luci-go"                      : None,
+        "v8/testing/gmock": None,
+        "v8/test/wasm-js": None,
+        "v8/third_party/colorama/src": None,
+        "v8/tools/gyp": None,
+        "v8/tools/luci-go": None,
     }
     if args.os != "android":
         deps["v8/third_party/catapult"] = None
         deps["v8/third_party/android_tools"] = None
     return deps
 
+
 gclient_sln = [
-    { "name"        : "v8",
-        "url"         : "https://chromium.googlesource.com/v8/v8.git",
-        "deps_file"   : "DEPS",
-        "managed"     : False,
-        "custom_deps" : get_custom_deps(),
+    {"name": "v8",
+        "url": "https://chromium.googlesource.com/v8/v8.git",
+        "deps_file": "DEPS",
+        "managed": False,
+        "custom_deps": get_custom_deps(),
         "custom_vars": {
-            "build_for_node" : True,
+            "build_for_node": True,
         },
-    },
+     },
 ]
 
 gn_args = """
@@ -74,7 +78,7 @@ target_os="%s"
 target_cpu="%s"
 v8_target_cpu="%s"
 clang_use_chrome_plugins=false
-use_custom_libcxx=false
+use_custom_libcxx=%s
 use_sysroot=false
 use_glib=false
 symbol_level=%s
@@ -90,16 +94,20 @@ icu_use_data_file=false
 v8_enable_test_features=false
 exclude_unwind_tables=true
 v8_android_log_stdout=true
+enable_crel=false
+v8_enable_temporal_support=false
 """
+
 
 def v8deps():
     spec = "solutions = %s\n" % gclient_sln
     spec += "target_os = [%r]" % (v8_os(),)
     env = os.environ.copy()
     env["PATH"] = tools_path + os.pathsep + env["PATH"]
-    subprocess_check_call(["gclient", "sync", "--delete_unversioned_trees", "--no-history", "--spec", spec],
-                        cwd=deps_path,
-                        env=env)
+    subprocess_check_call(["gclient", "sync", "--force", "--delete_unversioned_trees", "--no-history", "--spec", spec],
+                          cwd=deps_path,
+                          env=env)
+
 
 def build_gn_args():
     is_debug = args.debug
@@ -109,6 +117,9 @@ def build_gn_args():
     #   compiled library by an order of magnitude and further slow down compilation
     symbol_level = 1 if args.debug else 0
     strip_debug_info = not args.debug
+    # Use system libc++ on Linux to avoid ABI mismatch with v8go code.
+    # Other platforms (macOS, Android) need custom libc++.
+    use_custom_libcxx = args.os != "linux"
 
     gnargs = gn_args % (
         str(bool(is_debug)).lower(),
@@ -116,6 +127,7 @@ def build_gn_args():
         v8_os(),
         arch,
         arch,
+        str(use_custom_libcxx).lower(),
         symbol_level,
         str(strip_debug_info).lower(),
     )
@@ -130,29 +142,36 @@ def build_gn_args():
 
     return gnargs
 
+
 def subprocess_check_call(cmdargs, *pargs, **kwargs):
     if args.verbose:
         print(sys.argv[0], ">", " ".join(cmdargs), file=sys.stderr)
     subprocess.check_call(cmd(cmdargs), *pargs, **kwargs)
+
 
 def subprocess_check_output_text(cmdargs, *pargs, **kwargs):
     if args.verbose:
         print(sys.argv[0], ">", " ".join(cmdargs), file=sys.stderr)
     return subprocess.check_output(cmd(cmdargs), *pargs, **kwargs).decode('utf-8')
 
+
 def cmd(args):
     return ["cmd", "/c"] + args if is_windows else args
+
 
 def os_arch():
     return args.os + "_" + args.arch
 
+
 def v8_os():
     return args.os.replace('darwin', 'mac')
+
 
 def v8_arch():
     if args.arch == "amd64":
         return "x64"
     return args.arch
+
 
 def apply_mingw_patches():
     v8_build_path = os.path.join(v8_path, "build")
@@ -164,13 +183,33 @@ def apply_mingw_patches():
     zlib_dst_gn = os.path.join(zlib_path, "BUILD.gn")
     shutil.copy(zlib_src_gn, zlib_dst_gn)
 
+
 def apply_patch(patch_name, working_dir):
     patch_path = os.path.join(deps_path, os_arch(), patch_name + ".patch")
     subprocess_check_call(["git", "apply", "-v", patch_path], cwd=working_dir)
 
+
+def apply_build_patches():
+    """Apply patches to files downloaded by gclient (v8/build/, etc.)."""
+    patches_path = os.path.join(os.path.dirname(deps_path), "patches", "build")
+    if not os.path.isdir(patches_path):
+        return
+
+    repo_root = os.path.dirname(deps_path)
+    for patch_name in sorted(os.listdir(patches_path)):
+        if not patch_name.endswith(".patch"):
+            continue
+        patch_path = os.path.join(patches_path, patch_name)
+        # These patches use deps/v8/build paths, so apply from repo root
+        subprocess_check_call(
+            ["patch", "-p1", "-i", patch_path], cwd=repo_root)
+
+
 def update_last_change():
     out_path = os.path.join(v8_path, "build", "util", "LASTCHANGE")
-    subprocess_check_call(["python", "build/util/lastchange.py", "-o", out_path], cwd=v8_path)
+    subprocess_check_call(
+        ["python", "build/util/lastchange.py", "-o", out_path], cwd=v8_path)
+
 
 def split_ar(src_fn, dest_fn, dest_obj_dn):
     """Extracts all files from src_fn to dest_obj_dn/ and makes a thin archive at dest_fn.
@@ -179,7 +218,8 @@ def split_ar(src_fn, dest_fn, dest_obj_dn):
     """
     dest_path = os.path.dirname(dest_fn)
 
-    ar_path = os.path.abspath(os.path.join(v8_path, "third_party/llvm-build/Release+Asserts/bin/llvm-ar"))
+    ar_path = os.path.abspath(os.path.join(
+        v8_path, "third_party/llvm-build/Release+Asserts/bin/llvm-ar"))
     if args.os == "linux" and args.arch == "arm64" and not is_clang:
         ar_path = "aarch64-linux-gnu-ar"
     elif not os.access(ar_path, os.X_OK) or not is_clang:
@@ -223,10 +263,11 @@ def split_ar(src_fn, dest_fn, dest_obj_dn):
             cwd=v8_path)
         for ar_file in ar_files:
             ar_file_canon = ar_file if case_sensitive else ar_file.lower()
-            os.rename(os.path.join(dest_obj_dn, ar_file_canon), os.path.join(dest_obj_dn, "{}.{}".format(1 + j, ar_file)))
+            os.rename(os.path.join(dest_obj_dn, ar_file_canon), os.path.join(
+                dest_obj_dn, "{}.{}".format(1 + j, ar_file)))
             j += 1
 
-    file_groups = [] # [(file, size)]
+    file_groups = []  # [(file, size)]
     size = 0
     for fn in sorted(glob.glob(os.path.join(dest_obj_dn, "*"))):
         fsize = os.stat(fn).st_size
@@ -260,26 +301,29 @@ def split_ar(src_fn, dest_fn, dest_obj_dn):
         for dest_fn in dest_fns:
             print(dest_fn, file=f)
 
+
 def allocate_disjoint_files(ar_files, case_sensitive=True):
-    ar_file_counts = {} # file -> count
+    ar_file_counts = {}  # file -> count
     for ar_file in ar_files:
         ar_file_counts[ar_file] = ar_file_counts.get(ar_file, 0) + 1
     ar_file_counts = list(ar_file_counts.items())
     ar_file_counts.sort(key=lambda item: -item[1])
 
-    ar_file_groups = [] # [(index, files)]
+    ar_file_groups = []  # [(index, files)]
     while ar_file_counts:
-        canon_file_set = {} # canon file -> (file, count)
+        canon_file_set = {}  # canon file -> (file, count)
         file_set = set()
         max_count = 0
         for ar_file, count in ar_file_counts:
             ar_file_canon = ar_file if case_sensitive else ar_file.lower()
-            if ar_file_canon in canon_file_set: continue
+            if ar_file_canon in canon_file_set:
+                continue
             canon_file_set[ar_file_canon] = (ar_file, count)
             file_set.add(ar_file)
             max_count = max(max_count, count)
 
-        ar_file_counts = [(ar_file, count) for ar_file, count in ar_file_counts if ar_file not in file_set]
+        ar_file_counts = [(ar_file, count) for ar_file,
+                          count in ar_file_counts if ar_file not in file_set]
         groups = [(i, []) for i in range(max_count)]
         for ar_file, count in canon_file_set.values():
             for i in range(count):
@@ -288,22 +332,32 @@ def allocate_disjoint_files(ar_files, case_sensitive=True):
 
     return ar_file_groups
 
+
 def main():
     v8deps()
+    apply_build_patches()
     if is_windows:
         apply_mingw_patches()
 
     gn_path = os.path.join(tools_path, "gn")
-    assert(os.path.exists(gn_path))
-    ninja_path = os.path.join(tools_path, "ninja" + (".exe" if is_windows else ""))
-    assert(os.path.exists(ninja_path))
+    assert (os.path.exists(gn_path))
+    ninja_path = os.path.join(tools_path, "ninja" +
+                              (".exe" if is_windows else ""))
+    assert (os.path.exists(ninja_path))
 
     build_path = os.path.join(deps_path, ".build", os_arch())
 
     gnargs = build_gn_args()
 
-    subprocess_check_call([gn_path, "gen", build_path, "--args=" + gnargs.replace('\n', ' ')], cwd=v8_path)
-    subprocess_check_call([ninja_path, "-v", "-C", build_path, "v8_monolith"], cwd=v8_path)
+    subprocess_check_call([gn_path, "gen", build_path,
+                          "--args=" + gnargs.replace('\n', ' ')], cwd=v8_path)
+    # Build v8_monolith and libc++ (needed for linking on non-Linux when use_custom_libcxx=true)
+    ninja_targets = ["v8_monolith"]
+    use_custom_libcxx = args.os != "linux"
+    if use_custom_libcxx:
+        ninja_targets += ["libc++", "libc++abi"]
+    subprocess_check_call(
+        [ninja_path, "-v", "-C", build_path] + ninja_targets, cwd=v8_path)
 
     dest_path = os.path.join(deps_path, os_arch())
     dest_obj_dn = os.path.join(dest_path, "obj")
@@ -315,6 +369,35 @@ def main():
     finally:
         if os.path.exists(dest_obj_dn):
             shutil.rmtree(dest_obj_dn)
+
+    # Copy libc++ libraries when using custom libc++ (non-Linux platforms)
+    if use_custom_libcxx:
+        copy_libcxx(build_path, dest_path)
+
+
+def copy_libcxx(build_path, dest_path):
+    """Copy libc++ and libc++abi as regular (non-thin) archives.
+
+    Named with -cr suffix to avoid conflicts with system libc++.
+    """
+    ar_path = os.path.abspath(os.path.join(
+        v8_path, "third_party/llvm-build/Release+Asserts/bin/llvm-ar"))
+
+    for lib, dest_name in [("libc++", "libc++-cr"), ("libc++abi", "libc++abi-cr")]:
+        src = os.path.join(
+            build_path, "obj/buildtools/third_party", lib, lib + ".a")
+        dest = os.path.join(dest_path, dest_name + ".a")
+
+        # Extract object files and list them
+        obj_files = subprocess_check_output_text(
+            [ar_path, "t", src], cwd=build_path).splitlines()
+
+        # Create a regular (non-thin) archive
+        if os.path.exists(dest):
+            os.unlink(dest)
+        subprocess_check_call([ar_path, "qcs", dest] +
+                              obj_files, cwd=build_path)
+
 
 if __name__ == "__main__":
     main()
