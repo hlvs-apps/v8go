@@ -75,12 +75,12 @@ jobs:
         os: [linux]
         arch: [amd64]
         include:
-        - os: android
-          platform: ubuntu-latest
+        # - os: android
+        #   platform: ubuntu-latest
         - os: linux
           platform: ubuntu-latest
-        - os: darwin
-          platform: macos-latest
+        # - os: darwin
+        #   platform: macos-latest
     runs-on: ${{ matrix.platform }}
     steps:
     - name: Install g++-aarch64-linux-gnu
@@ -219,21 +219,12 @@ jobs:
     - name: Update LDFLAGS in cgo.go
       run: ./deps/update_cgo.py
 
-    - name: Update Changelog
-      run: |
-        ./tools/modifychangelog.py \
-        --unchanged '- Auto-bumped V8 .*' \
-        --changed "- Auto-bumped V8 to ${{ steps.update_v8.outputs.latest_v8_version }}." \
-        --inplace \
-        CHANGELOG.md
-
     - id: commit
       name: Commit
       uses: EndBug/add-and-commit@v9
       with:
         add: |
           - cgo.go
-          - CHANGELOG.md
           - deps/*_*/cgo.go
           - deps/*_*/lib*.a
           - deps/*_*/libmanifest
