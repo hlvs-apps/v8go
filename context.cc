@@ -1,4 +1,5 @@
 #include "deps/include/v8-template.h"
+#include "deps/include/v8-external.h"
 
 #include "context-macros.h"
 #include "template.h"
