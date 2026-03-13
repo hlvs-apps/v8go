@@ -39,7 +39,9 @@ deps_path = os.path.dirname(os.path.realpath(__file__))
 v8_path = os.path.join(deps_path, "v8")
 tools_path = os.path.join(deps_path, "depot_tools")
 is_windows = platform.system().lower() == "windows"
-is_clang = args.clang if args.clang is not None else args.os != "linux"
+# Chromium defaults to clang on Linux for x86_64/arm64.
+# GCC is only used for s390x, ppc, mips, riscv which we don't support.
+is_clang = args.clang if args.clang is not None else True
 
 
 def get_custom_deps():
@@ -76,14 +78,9 @@ target_os="%s"
 target_cpu="%s"
 v8_target_cpu="%s"
 clang_use_chrome_plugins=false
-use_custom_libcxx=false
-use_clang_modules=false
-use_libcxx_modules=false
-use_allocator_shim=false
+use_custom_libcxx=%s
 use_sysroot=false
 use_glib=false
-use_lto=false
-use_thin_lto=false
 symbol_level=%s
 strip_debug_info=%s
 is_component_build=false
@@ -93,11 +90,12 @@ treat_warnings_as_errors=false
 v8_embedder_string="-v8go"
 v8_enable_gdbjit=false
 v8_enable_i18n_support=true
-v8_enable_temporal_support=false
 icu_use_data_file=false
 v8_enable_test_features=false
 exclude_unwind_tables=true
 v8_android_log_stdout=true
+enable_crel=false
+v8_enable_temporal_support=false
 """
 
 
@@ -106,7 +104,7 @@ def v8deps():
     spec += "target_os = [%r]" % (v8_os(),)
     env = os.environ.copy()
     env["PATH"] = tools_path + os.pathsep + env["PATH"]
-    subprocess_check_call(["gclient", "sync", "--delete_unversioned_trees", "--no-history", "--spec", spec],
+    subprocess_check_call(["gclient", "sync", "--force", "--delete_unversioned_trees", "--no-history", "--spec", spec],
                           cwd=deps_path,
                           env=env)
 
@@ -119,6 +117,9 @@ def build_gn_args():
     #   compiled library by an order of magnitude and further slow down compilation
     symbol_level = 1 if args.debug else 0
     strip_debug_info = not args.debug
+    # Use system libc++ on Linux to avoid ABI mismatch with v8go code.
+    # Other platforms (macOS, Android) need custom libc++.
+    use_custom_libcxx = args.os != "linux"
 
     gnargs = gn_args % (
         str(bool(is_debug)).lower(),
@@ -126,14 +127,10 @@ def build_gn_args():
         v8_os(),
         arch,
         arch,
+        str(use_custom_libcxx).lower(),
         symbol_level,
         str(strip_debug_info).lower(),
     )
-    if args.os == "android":
-        # Newer V8 uses std::atomic_ref in src/base/memcopy.h. The Android
-        # NDK libc++ in this toolchain does not provide it, but Chromium's
-        # bundled libc++ does.
-        gnargs += 'use_custom_libcxx=true\n'
     if args.ccache:
         gnargs += 'cc_wrapper="ccache"\n'
     if not is_clang and arch == "arm64":
@@ -142,6 +139,9 @@ def build_gn_args():
         #
         # V8 itself fixed this in https://chromium-review.googlesource.com/c/v8/v8/+/3930160.
         gnargs += 'arm_control_flow_integrity="none"\n'
+
+    # Explicitly disable crel format for the output archives, as some versions of llvm-ar default to it and it is not widely supported by other tools.
+    gnargs += 'crel="false"\n'
 
     return gnargs
 
@@ -190,6 +190,22 @@ def apply_mingw_patches():
 def apply_patch(patch_name, working_dir):
     patch_path = os.path.join(deps_path, os_arch(), patch_name + ".patch")
     subprocess_check_call(["git", "apply", "-v", patch_path], cwd=working_dir)
+
+
+def apply_build_patches():
+    """Apply patches to files downloaded by gclient (v8/build/, etc.)."""
+    patches_path = os.path.join(os.path.dirname(deps_path), "patches", "build")
+    if not os.path.isdir(patches_path):
+        return
+
+    repo_root = os.path.dirname(deps_path)
+    for patch_name in sorted(os.listdir(patches_path)):
+        if not patch_name.endswith(".patch"):
+            continue
+        patch_path = os.path.join(patches_path, patch_name)
+        # These patches use deps/v8/build paths, so apply from repo root
+        subprocess_check_call(
+            ["patch", "-p1", "-i", patch_path], cwd=repo_root)
 
 
 def update_last_change():
@@ -322,6 +338,7 @@ def allocate_disjoint_files(ar_files, case_sensitive=True):
 
 def main():
     v8deps()
+    apply_build_patches()
     if is_windows:
         apply_mingw_patches()
 
@@ -337,8 +354,13 @@ def main():
 
     subprocess_check_call([gn_path, "gen", build_path,
                           "--args=" + gnargs.replace('\n', ' ')], cwd=v8_path)
+    # Build v8_monolith and libc++ (needed for linking on non-Linux when use_custom_libcxx=true)
+    ninja_targets = ["v8_monolith"]
+    use_custom_libcxx = args.os != "linux"
+    if use_custom_libcxx:
+        ninja_targets += ["libc++", "libc++abi"]
     subprocess_check_call(
-        [ninja_path, "-v", "-C", build_path, "v8_monolith"], cwd=v8_path)
+        [ninja_path, "-v", "-C", build_path] + ninja_targets, cwd=v8_path)
 
     dest_path = os.path.join(deps_path, os_arch())
     dest_obj_dn = os.path.join(dest_path, "obj")
@@ -350,6 +372,34 @@ def main():
     finally:
         if os.path.exists(dest_obj_dn):
             shutil.rmtree(dest_obj_dn)
+
+    # Copy libc++ libraries when using custom libc++ (non-Linux platforms)
+    if use_custom_libcxx:
+        copy_libcxx(build_path, dest_path)
+
+
+def copy_libcxx(build_path, dest_path):
+    """Copy libc++ and libc++abi as regular (non-thin) archives.
+
+    Named with -cr suffix to avoid conflicts with system libc++.
+    """
+    ar_path = os.path.abspath(os.path.join(
+        v8_path, "third_party/llvm-build/Release+Asserts/bin/llvm-ar"))
+
+    for lib, dest_name in [("libc++", "libc++-cr"), ("libc++abi", "libc++abi-cr")]:
+        src = os.path.join(
+            build_path, "obj/buildtools/third_party", lib, lib + ".a")
+        dest = os.path.join(dest_path, dest_name + ".a")
+
+        # Extract object files and list them
+        obj_files = subprocess_check_output_text(
+            [ar_path, "t", src], cwd=build_path).splitlines()
+
+        # Create a regular (non-thin) archive
+        if os.path.exists(dest):
+            os.unlink(dest)
+        subprocess_check_call([ar_path, "qcs", dest] +
+                              obj_files, cwd=build_path)
 
 
 if __name__ == "__main__":

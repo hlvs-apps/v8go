@@ -33,9 +33,13 @@ def format_ldflags_libs(os, arch, libs):
     # However, XCode ld(1) does not support it, but says it "will continually search a static library": https://keith.github.io/xcode-man-pages/ld.1.html
     start_group = "-Wl,--start-group " if os != "darwin" else ""
     end_group = " -Wl,--end-group" if os != "darwin" else ""
-    return (start_group +
-            " ".join("-l{}".format(lib.replace(".a", "").replace("libv8", "v8")) for lib in libs) +
-            end_group)
+    ldflags = (start_group +
+               " ".join("-l{}".format(lib.replace(".a", "").replace("libv8", "v8")) for lib in libs) +
+               end_group)
+    if os == "darwin":
+        # V8's partition allocator may call SecTask* APIs for MAP_JIT checks.
+        ldflags += " -framework Security"
+    return ldflags
 
 
 def generate_imported_mod_file(path, root_module, os, arch, min_go_version):
@@ -63,8 +67,7 @@ package {os}_{arch}
 // #cgo LDFLAGS: -pthread -L${{SRCDIR}}
 // #cgo LDFLAGS: {ldflags}
 // #cgo libgcompat LDFLAGS: -lgcompat
-// #cgo linux LDFLAGS: -ldl -latomic
-// #cgo darwin,android LDFLAGS: -lc++-cr -lc++abi-cr
+// #cgo linux LDFLAGS: -ldl
 import "C"
 """
 
