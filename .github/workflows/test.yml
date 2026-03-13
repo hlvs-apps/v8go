@@ -50,5 +50,5 @@ jobs:
     - uses: actions/upload-artifact@v7
       if: success() || failure()
       with:
-        name: Test Reports
+        name: Test Reports ${{ matrix.os }} ${{ matrix.arch }} Go ${{ matrix.go-version }}
         path: .test/reports/**
