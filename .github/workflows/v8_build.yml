@@ -72,15 +72,15 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [linux]
-        arch: [amd64]
+        os: [darwin, linux]
+        arch: [amd64, arm64]
         include:
-        # - os: android
-        #   platform: ubuntu-latest
+        - os: android
+          platform: ubuntu-latest
         - os: linux
           platform: ubuntu-latest
-        # - os: darwin
-        #   platform: macos-latest
+        - os: darwin
+          platform: macos-latest
     runs-on: ${{ matrix.platform }}
     steps:
     - name: Install g++-aarch64-linux-gnu

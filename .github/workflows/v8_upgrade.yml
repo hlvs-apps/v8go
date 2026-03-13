@@ -57,3 +57,11 @@ jobs:
     uses: ./.github/workflows/v8_build.yml
     with:
       v8_hash: ${{ needs.upgrade.outputs.latest_v8_hash }}
+
+  test:
+    name: Run V8 Tests
+    needs: build
+    if: ${{ needs.upgrade.outputs.has_upgrade == 'true' }}
+    uses: ./.github/workflows/test.yml
+    with:
+      v8_hash: ${{ needs.upgrade.outputs.latest_v8_hash }}
