@@ -98,6 +98,8 @@ icu_use_data_file=false
 v8_enable_test_features=false
 exclude_unwind_tables=true
 v8_android_log_stdout=true
+v8_enable_temporal_support=false
+enable_crel=false
 """
 
 
@@ -142,6 +144,9 @@ def build_gn_args():
         #
         # V8 itself fixed this in https://chromium-review.googlesource.com/c/v8/v8/+/3930160.
         gnargs += 'arm_control_flow_integrity="none"\n'
+
+    # Explicitly disable crel format for the output archives, as some versions of llvm-ar default to it and it is not widely supported by other tools.
+    gnargs += 'crel="false"\n'
 
     return gnargs
 
