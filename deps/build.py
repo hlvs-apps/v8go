@@ -70,7 +70,7 @@ gclient_sln = [
 ]
 
 gn_args = ""
-gn_file_path = os.path.join(deps_path, "args", v8_os(), ".gn")
+gn_file_path = os.path.join(deps_path, "args", args.os, ".gn")
 with open(gn_file_path) as f:
     gn_args = [line.strip() for line in f if line.strip()]
 
