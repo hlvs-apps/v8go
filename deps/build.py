@@ -69,39 +69,9 @@ gclient_sln = [
      },
 ]
 
-gn_args = """
-is_debug=%s
-is_clang=%s
-target_os="%s"
-target_cpu="%s"
-v8_target_cpu="%s"
-clang_use_chrome_plugins=false
-use_custom_libcxx=false
-use_clang_modules=false
-use_libcxx_modules=false
-use_allocator_shim=false
-use_sysroot=false
-use_glib=false
-use_lto=false
-use_thin_lto=false
-symbol_level=%s
-strip_debug_info=%s
-is_component_build=false
-v8_monolithic=true
-v8_use_external_startup_data=false
-treat_warnings_as_errors=false
-v8_embedder_string="-v8go"
-v8_enable_gdbjit=false
-v8_enable_i18n_support=true
-v8_enable_temporal_support=false
-icu_use_data_file=false
-v8_enable_test_features=false
-exclude_unwind_tables=true
-v8_android_log_stdout=true
-v8_enable_temporal_support=false
-enable_crel=false
-"""
-
+gn_file_path = os.path.join(deps_path, "args", f"{v8_os()}_{v8_arch()}.gn")
+gn_args = with open(gn_file_path) as f:
+    content = [line.strip() for line in f if line.strip()]
 
 def v8deps():
     spec = "solutions = %s\n" % gclient_sln
@@ -356,6 +326,25 @@ def main():
         if os.path.exists(dest_obj_dn):
             shutil.rmtree(dest_obj_dn)
 
+def parse_gn_args(filepath: Path) -> dict[str, str]:
+    """
+    Parse a .gn args file into a dict.
+    Handles: key=value, # comments, blank lines, quoted strings.
+    """
+    args = {}
+    with open(filepath) as f:
+        for line in f:
+            line = line.strip()
+            # Skip blank lines and comments
+            if not line or line.startswith("#"):
+                continue
+            if "=" not in line:
+                continue
+            # Strip inline comments
+            line = line.split("#")[0].strip()
+            key, _, value = line.partition("=")
+            args[key.strip()] = value.strip()
+    return args
 
 if __name__ == "__main__":
     main()
