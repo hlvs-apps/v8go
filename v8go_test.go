@@ -12,7 +12,7 @@ import (
 )
 
 func TestVersion(t *testing.T) {
-	rgx := regexp.MustCompile(`^\d+\.\d+\.\d+\.\d+-v8go$`)
+	rgx := regexp.MustCompile(`^\d+\.\d+\.\d+-v8go$`)
 	v := v8.Version()
 	if !rgx.MatchString(v) {
 		t.Errorf("version string is in the incorrect format: %s", v)

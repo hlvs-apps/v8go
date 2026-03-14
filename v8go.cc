@@ -273,7 +273,7 @@ int TemplateSetAnyTemplate(TemplatePtr ptr,
 
 /********** Context **********/
 
-RtnValue JSONParse(ContextPtr ctx, const char* str) {
+RtnValue JSONParse(ContextPtr ctx, const char* str, const char* origin) {
   LOCAL_CONTEXT(ctx);
   RtnValue rtn = {};
 
@@ -283,9 +283,19 @@ RtnValue JSONParse(ContextPtr ctx, const char* str) {
   }
 
   Local<Value> result;
-  if (!JSON::Parse(local_ctx, v8Str).ToLocal(&result)) {
-    rtn.error = ExceptionError(try_catch, iso, local_ctx);
-    return rtn;
+  if (origin != nullptr) {
+    Local<String> ogn =
+        String::NewFromUtf8(iso, origin, NewStringType::kNormal).ToLocalChecked();
+    ScriptOrigin script_origin(ogn);
+    if (!JSON::Parse(local_ctx, v8Str, script_origin).ToLocal(&result)) {
+      rtn.error = ExceptionError(try_catch, iso, local_ctx);
+      return rtn;
+    }
+  } else {
+    if (!JSON::Parse(local_ctx, v8Str).ToLocal(&result)) {
+      rtn.error = ExceptionError(try_catch, iso, local_ctx);
+      return rtn;
+    }
   }
   m_value* val = new m_value;
   val->id = 0;

@@ -2,16 +2,15 @@ name: V8 Upgrade
 
 on:
   workflow_dispatch:
-  schedule:
-  - cron: '0 0 * * *' # Run every day
+    inputs:
+      v8_hash:
+        description: 'V8 hash to upgrade to (optional, for manual runs)'
+        required: true
 
 jobs:
   upgrade:
     name: Upgrade V8
     runs-on: ubuntu-latest
-    outputs:
-      has_upgrade: ${{ steps.check_v8.outputs.has_upgrade }}
-      latest_v8_hash: ${{ steps.check_v8.outputs.latest_v8_hash }}
     steps:
     - name: Install Utilities
       run: |
@@ -23,40 +22,41 @@ jobs:
       with:
         fetch-depth: 1
 
-    - id: check_v8
-      name: Check Latest Stable Chromium V8
-      run: |
-        set -o pipefail
-        wget -q -O- "https://chromiumdash.appspot.com/fetch_releases?channel=Stable&platform=Linux&num=1&offset=0" | jq -r ".[0].hashes.v8" >deps/v8_hash
-        echo "latest_v8_hash=$(<deps/v8_hash)" >>"$GITHUB_OUTPUT"
-        bad_reason="$(awk -vhash="$(<deps/v8_hash)" '!$0 { next; } $1 == hash { $1 = ""; print substr($0, 2); }' deps/bad_v8_hashes)"
-        if [ -n "$bad_reason" ]; then
-          echo "has_upgrade=false" >>"$GITHUB_OUTPUT"
-          echo "reason=$bad_reason" >>"$GITHUB_OUTPUT"
-        else
-          echo "has_upgrade=$(git status --porcelain | grep -q . && echo true || echo false)" >>"$GITHUB_OUTPUT"
-        fi
+    # - id: check_v8
+    #   name: Check Latest Stable Chromium V8
+    #   if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.v8_hash != '' }}
+    #   run: |
+    #     set -o pipefail
+    #     wget -q -O- "https://chromiumdash.appspot.com/fetch_releases?channel=Stable&platform=Linux&num=1&offset=0" | jq -r ".[0].hashes.v8" >deps/v8_hash
+    #     echo "latest_v8_hash=$(<deps/v8_hash)" >>"$GITHUB_OUTPUT"
+    #     bad_reason="$(awk -vhash="$(<deps/v8_hash)" '!$0 { next; } $1 == hash { $1 = ""; print substr($0, 2); }' deps/bad_v8_hashes)"
+    #     if [ -n "$bad_reason" ]; then
+    #       echo "has_upgrade=false" >>"$GITHUB_OUTPUT"
+    #       echo "reason=$bad_reason" >>"$GITHUB_OUTPUT"
+    #     else
+    #       echo "has_upgrade=$(git status --porcelain | grep -q . && echo true || echo false)" >>"$GITHUB_OUTPUT"
+    #     fi
 
-    - name: Create Summary
-      if: ${{ steps.check_v8.outputs.has_upgrade == 'true' }}
-      run: |
-        echo "New V8 hash: ${{ steps.check_v8.outputs.latest_v8_hash }}" >>"$GITHUB_STEP_SUMMARY"
+    # - name: Create Summary
+    #   if: ${{ steps.check_v8.outputs.has_upgrade == 'true' }}
+    #   run: |
+    #     echo "New V8 hash: ${{ steps.check_v8.outputs.latest_v8_hash }}" >>"$GITHUB_STEP_SUMMARY"
 
-    - name: Create Summary (no upgrade)
-      if: ${{ steps.check_v8.outputs.has_upgrade != 'true' }}
-      run: |
-        echo "No V8 upgrade available." >>"$GITHUB_STEP_SUMMARY"
-        if [ -n "${{ steps.check_v8.outputs.reason }}" ]; then
-          echo "Reason: ${{ steps.check_v8.outputs.reason }}" >>"$GITHUB_STEP_SUMMARY"
-        fi
+    # - name: Create Summary (no upgrade)
+    #   if: ${{ steps.check_v8.outputs.has_upgrade != 'true' }}
+    #   run: |
+    #     echo "No V8 upgrade available." >>"$GITHUB_STEP_SUMMARY"
+    #     if [ -n "${{ steps.check_v8.outputs.reason }}" ]; then
+    #       echo "Reason: ${{ steps.check_v8.outputs.reason }}" >>"$GITHUB_STEP_SUMMARY"
+    #     fi
 
   build:
     name: Run V8 Build
     needs: upgrade
-    if: ${{ needs.upgrade.outputs.has_upgrade == 'true' }}
+    # if: ${{ needs.upgrade.outputs.has_upgrade == 'true' }}
     uses: ./.github/workflows/v8_build.yml
     with:
-      v8_hash: ${{ needs.upgrade.outputs.latest_v8_hash }}
+      v8_hash: ${{ inputs.v8_hash }}
 
   test:
     name: Run V8 Tests

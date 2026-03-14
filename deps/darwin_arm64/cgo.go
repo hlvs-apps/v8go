@@ -3,7 +3,8 @@
 package darwin_arm64
 
 // #cgo LDFLAGS: -pthread -L${SRCDIR}
-// #cgo LDFLAGS: -lv8-0 -lv8-1
+// #cgo LDFLAGS: -lv8_monolith
 // #cgo libgcompat LDFLAGS: -lgcompat
+// #cgo darwin,arm64 LDFLAGS: -framework Security -framework CoreFoundation
 // #cgo linux LDFLAGS: -ldl
 import "C"
