@@ -69,9 +69,10 @@ gclient_sln = [
      },
 ]
 
+gn_args = ""
 gn_file_path = os.path.join(deps_path, "args", f"{v8_os()}_{v8_arch()}.gn")
-gn_args = with open(gn_file_path) as f:
-    content = [line.strip() for line in f if line.strip()]
+with open(gn_file_path) as f:
+    gn_args = [line.strip() for line in f if line.strip()]
 
 def v8deps():
     spec = "solutions = %s\n" % gclient_sln
