@@ -327,25 +327,5 @@ def main():
         if os.path.exists(dest_obj_dn):
             shutil.rmtree(dest_obj_dn)
 
-def parse_gn_args(filepath: Path) -> dict[str, str]:
-    """
-    Parse a .gn args file into a dict.
-    Handles: key=value, # comments, blank lines, quoted strings.
-    """
-    args = {}
-    with open(filepath) as f:
-        for line in f:
-            line = line.strip()
-            # Skip blank lines and comments
-            if not line or line.startswith("#"):
-                continue
-            if "=" not in line:
-                continue
-            # Strip inline comments
-            line = line.split("#")[0].strip()
-            key, _, value = line.partition("=")
-            args[key.strip()] = value.strip()
-    return args
-
 if __name__ == "__main__":
     main()
