@@ -28,7 +28,7 @@ jobs:
       v8_hash: ${{ steps.update_v8.outputs.v8_hash }}
     steps:
     - name: Checkout
-      uses: actions/checkout@v4
+      uses: actions/checkout@v6
       with:
         submodules: true
         fetch-depth: 1
@@ -84,7 +84,7 @@ jobs:
         PIP_BREAK_SYSTEM_PACKAGES: '1'
 
     - name: Checkout
-      uses: actions/checkout@v4
+      uses: actions/checkout@v6
       with:
         submodules: true
         fetch-depth: 1
@@ -128,7 +128,7 @@ jobs:
       sha: ${{ steps.create_summary.outputs.sha }}
     steps:
     - name: Checkout
-      uses: actions/checkout@v4
+      uses: actions/checkout@v6
       with:
         submodules: true
         fetch-depth: 1
@@ -225,7 +225,7 @@ jobs:
   #     sha: ${{ steps.create_summary.outputs.sha }}
   #   steps:
   #   - name: Checkout
-  #     uses: actions/checkout@v4
+  #     uses: actions/checkout@v6
   #     with:
   #       # Our git log in deps/ requires an arbitrarily deep history.
   #       fetch-depth: 0
