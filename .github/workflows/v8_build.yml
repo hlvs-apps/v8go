@@ -167,7 +167,7 @@ jobs:
         echo ::set-output name=pr_body::"Auto-generated pull request to upgrade V8 binary for $(cat deps/v8_hash) version"
 
     - name: Create PR
-      uses: peter-evans/create-pull-request@v3
+      uses: peter-evans/create-pull-request@v8
       with:
         commit-message: ${{steps.pr_metadata.outputs.pr_commit_message}}
         branch: ${{steps.pr_metadata.outputs.pr_branch}}
