@@ -320,7 +320,7 @@ def main():
     gnargs = build_gn_args()
 
     subprocess_check_call([gn_path, "gen", build_path, "--args=" + gnargs.replace('\n', ' ')], cwd=v8_path)
-    subprocess_check_call([ninja_path, "-v", "-C", build_path, "v8_monolith"], cwd=v8_path)
+    subprocess_check_call([ninja_path, "-v", "-j", str(os.cpu_count()), "-C", build_path, "v8_monolith"], cwd=v8_path)
 
     dest_path = os.path.join(deps_path, os_arch())
     dest_obj_dn = os.path.join(dest_path, "obj")
