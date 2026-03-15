@@ -143,8 +143,6 @@ def build_gn_args():
         gnargs += 'arm_control_flow_integrity="none"\n'
 
     if args.os != "linux":
-        # https://chromium.googlesource.com/chromium/src/+/master/tools/clang/scripts/update.py
-        # introduced -fcrel-plt, which isn't supported by older binutils.
         gnargs += 'crel="false"\n'
 
     return gnargs
