@@ -1,10 +1,18 @@
 # patches/fix-atomic-ref-ctad.patch
---- a/src/heap/cppgc/heap-object-header.h
-+++ b/src/heap/cppgc/heap-object-header.h
+--- a/deps/v8/src/heap/cppgc/heap-object-header.h
++++ b/deps/v8/src/heap/cppgc/heap-object-header.h
 @@ -354,7 +354,7 @@
    template <AccessMode mode, EncodedHalf part,
              std::memory_order memory_order>
    uint16_t LoadEncoded() const {
 -    return std::atomic_ref(const_cast<uint16_t&>(half)).load(memory_order);
++    return std::atomic_ref<uint16_t>(const_cast<uint16_t&>(half)).load(memory_order);
+   }
+ 
+   template <AccessMode mode, EncodedHalf part,
+             std::memory_order memory_order>
+   void StoreEncoded(uint16_t value) {
+     std::atomic_ref<uint16_t>(const_cast<uint16_t&>(half)).store(value, memory_order);
+   }
 +    return std::atomic_ref<uint16_t>(const_cast<uint16_t&>(half)).load(memory_order);
    }
