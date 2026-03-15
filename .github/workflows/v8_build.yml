@@ -111,6 +111,15 @@ jobs:
         git fetch --depth=1 origin "$latest_v8_hash"
         git checkout "$latest_v8_hash"
 
+    - name: Apply Patches
+      run: |
+        if [ -d patches ]; then
+          for f in patches/*.patch; do
+            echo "Apply $f"
+            patch -p1 -i "$f"
+          done
+        fi
+
     - name: Update depot_tools fetch config
       run: cd deps/depot_tools && git config --unset-all remote.origin.fetch; git config --add remote.origin.fetch +refs/heads/*:refs/remotes/origin/*
 
