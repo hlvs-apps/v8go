@@ -19,10 +19,10 @@ replace (
 )
 
 require (
-	github.com/katallaxie/v8go/deps/darwin_amd64 v0.0.0-20260311054308-aa8d48711689
-	github.com/katallaxie/v8go/deps/darwin_arm64 v0.0.0-20260311054308-aa8d48711689
-	github.com/katallaxie/v8go/deps/linux_amd64 v0.0.0-20260311054308-aa8d48711689
-	github.com/katallaxie/v8go/deps/linux_arm64 v0.0.0-20260311054308-aa8d48711689
+	github.com/katallaxie/v8go/deps/darwin_amd64 v0.0.0-20260315151123-d0268b3f2f32
+	github.com/katallaxie/v8go/deps/darwin_arm64 v0.0.0-20260315151123-d0268b3f2f32
+	github.com/katallaxie/v8go/deps/linux_amd64 v0.0.0-20260315151123-d0268b3f2f32
+	github.com/katallaxie/v8go/deps/linux_arm64 v0.0.0-20260315151123-d0268b3f2f32
 	github.com/stretchr/testify v1.11.1
 )
 
