@@ -5,7 +5,7 @@
 [![Go Reference](https://pkg.go.dev/badge/katallaxie/v8go.svg)](https://pkg.go.dev/katallaxie/v8go)
 [![Test](https://github.com/katallaxie/v8go/actions/workflows/main.yml/badge.svg)](https://github.com/katallaxie/v8go/actions/workflows/main.yml)
 ![V8 Build](https://github.com/katallaxie/v8go/workflows/V8%20Build/badge.svg)
-![V8 Version](https://img.shields.io/badge/v8-14.6.650202-blue)
+![V8 Version](https://img.shields.io/badge/V8-14.6.650202-blue)
 [![codecov](https://codecov.io/gh/katallaxie/v8go/branch/master/graph/badge.svg?token=VHZwzGm3dV)](https://codecov.io/gh/katallaxie/v8go)
 
 
