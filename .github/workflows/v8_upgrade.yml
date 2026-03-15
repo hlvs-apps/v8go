@@ -62,4 +62,4 @@ jobs:
     needs: build
     uses: ./.github/workflows/test.yml
     with:
-      v8_hash: ${{ needs.upgrade.outputs.latest_v8_hash }}
+      v8_hash: ${{ inputs.v8_hash }}
