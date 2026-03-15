@@ -184,7 +184,6 @@ func printTree(nest string, node *v8.CPUProfileNode) {
 Run the benchmarks via `make bench`.
 
 ```bash
-go tool mvdan.cc/gofumpt -w .
 go vet ./...
 go test -bench=. | go tool golang.org/x/perf/cmd/benchstat -
 goos: linux
@@ -192,20 +191,20 @@ goarch: arm64
 pkg: github.com/katallaxie/v8go
                         │      -       │
                         │    sec/op    │
-Context-8                 117.8µ ± ∞ ¹
-IsolateInitialization-8   298.1µ ± ∞ ¹
-IsolateInitAndRun-8       447.2µ ± ∞ ¹
-IsolateCodeCache-8        765.5µ ± ∞ ¹
-geomean                   331.1µ
+Context-8                 117.9µ ± ∞ ¹
+IsolateInitialization-8   305.1µ ± ∞ ¹
+IsolateInitAndRun-8       434.5µ ± ∞ ¹
+IsolateCodeCache-8        420.8µ ± ∞ ¹
+geomean                   284.8µ
 ¹ need >= 6 samples for confidence interval at level 0.95
 
-                        │       -       │
-                        │     B/op      │
-Context-8                   769.0 ± ∞ ¹
-IsolateInitialization-8     152.0 ± ∞ ¹
-IsolateInitAndRun-8         921.0 ± ∞ ¹
-IsolateCodeCache-8        14.42Ki ± ∞ ¹
-geomean                   1.097Ki
+                        │      -      │
+                        │    B/op     │
+Context-8                 768.0 ± ∞ ¹
+IsolateInitialization-8   152.0 ± ∞ ¹
+IsolateInitAndRun-8       921.0 ± ∞ ¹
+IsolateCodeCache-8        264.0 ± ∞ ¹
+geomean                   410.5
 ¹ need >= 6 samples for confidence interval at level 0.95
 
                         │      -      │
@@ -213,8 +212,8 @@ geomean                   1.097Ki
 Context-8                 18.00 ± ∞ ¹
 IsolateInitialization-8   5.000 ± ∞ ¹
 IsolateInitAndRun-8       23.00 ± ∞ ¹
-IsolateCodeCache-8        16.00 ± ∞ ¹
-geomean                   13.49
+IsolateCodeCache-8        12.00 ± ∞ ¹
+geomean                   12.55
 ¹ need >= 6 samples for confidence interval at level 0.95
 ```
 

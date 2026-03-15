@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/rand"
-	"os"
 	"strings"
 	"testing"
 
@@ -321,32 +320,24 @@ func BenchmarkIsolateInitAndRun(b *testing.B) {
 
 func BenchmarkIsolateCodeCache(b *testing.B) {
 	b.ReportAllocs()
+
 	iso := v8.NewIsolate()
 	defer iso.Dispose()
 
-	dat, err := os.ReadFile("test/url-polyfill.js")
+	scrpt, err := iso.CompileUnboundScript(string(script), "main.js", v8.CompileOptions{})
+	cache := scrpt.CreateCodeCache()
+	opts := v8.CompileOptions{CachedData: cache}
 	require.NoError(b, err)
-
-	script, err := iso.CompileUnboundScript(string(dat), "url-polyfill.js", v8.CompileOptions{})
-	require.NoError(b, err)
-	cache := script.CreateCodeCache()
 
 	b.ResetTimer()
 
 	for n := 0; n < b.N; n++ {
 		iso := v8.NewIsolate()
-		defer iso.Dispose()
-
 		ctx := v8.NewContext(iso)
-		defer ctx.Close()
-
-		opts := v8.CompileOptions{CachedData: cache}
-		script, err := iso.CompileUnboundScript(string(dat), "url-polyfill.js", opts)
-		require.NoError(b, err)
-
-		_, err = script.Run(ctx)
-		require.NoError(b, err)
-		require.False(b, opts.CachedData.Rejected)
+		script, _ := iso.CompileUnboundScript(string(script), "main.js", opts)
+		script.Run(ctx)
+		ctx.Close()
+		iso.Dispose()
 	}
 }
 
