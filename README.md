@@ -192,11 +192,11 @@ goarch: arm64
 pkg: github.com/katallaxie/v8go
                         │      -       │
                         │    sec/op    │
-Context-8                 140.9µ ± ∞ ¹
-IsolateInitialization-8   315.4µ ± ∞ ¹
-IsolateInitAndRun-8       474.3µ ± ∞ ¹
-IsolateCodeCache-8        863.7µ ± ∞ ¹
-geomean                   367.3µ
+Context-8                 117.8µ ± ∞ ¹
+IsolateInitialization-8   298.1µ ± ∞ ¹
+IsolateInitAndRun-8       447.2µ ± ∞ ¹
+IsolateCodeCache-8        765.5µ ± ∞ ¹
+geomean                   331.1µ
 ¹ need >= 6 samples for confidence interval at level 0.95
 
                         │       -       │
@@ -204,7 +204,7 @@ geomean                   367.3µ
 Context-8                   769.0 ± ∞ ¹
 IsolateInitialization-8     152.0 ± ∞ ¹
 IsolateInitAndRun-8         921.0 ± ∞ ¹
-IsolateCodeCache-8        14.43Ki ± ∞ ¹
+IsolateCodeCache-8        14.42Ki ± ∞ ¹
 geomean                   1.097Ki
 ¹ need >= 6 samples for confidence interval at level 0.95
 
