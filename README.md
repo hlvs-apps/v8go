@@ -238,7 +238,7 @@ variable.
 
 ## V8 dependency
 
-V8 version: **9.0.257.18** (April 2021)
+V8 version: **14.6.650202** (March 2026)
 
 In order to make `v8go` usable as a standard Go package, prebuilt static libraries of V8
 are included for Linux and macOS. you *should not* require to build V8 yourself.
