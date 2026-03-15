@@ -6,8 +6,6 @@
 [![Test](https://github.com/katallaxie/v8go/actions/workflows/main.yml/badge.svg)](https://github.com/katallaxie/v8go/actions/workflows/main.yml)
 ![V8 Build](https://github.com/katallaxie/v8go/workflows/V8%20Build/badge.svg)
 ![V8 Version](https://img.shields.io/badge/V8-14.6.650202-blue)
-[![codecov](https://codecov.io/gh/katallaxie/v8go/branch/master/graph/badge.svg?token=VHZwzGm3dV)](https://codecov.io/gh/katallaxie/v8go)
-
 
 <img src="gopher.jpg" width="200px" alt="V8 Gopher based on original artwork from the amazing Renee French" />
 
