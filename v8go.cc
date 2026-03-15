@@ -284,8 +284,8 @@ RtnValue JSONParse(ContextPtr ctx, const char* str, const char* origin) {
 
   Local<Value> result;
   if (origin != nullptr) {
-    Local<String> ogn =
-        String::NewFromUtf8(iso, origin, NewStringType::kNormal).ToLocalChecked();
+    Local<String> ogn = String::NewFromUtf8(iso, origin, NewStringType::kNormal)
+                            .ToLocalChecked();
     ScriptOrigin script_origin(ogn);
     if (!JSON::Parse(local_ctx, v8Str, script_origin).ToLocal(&result)) {
       rtn.error = ExceptionError(try_catch, iso, local_ctx);
