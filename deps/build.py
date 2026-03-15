@@ -104,6 +104,7 @@ v8_android_log_stdout=true
 v8_enable_temporal_support=false
 v8_enable_embedder_custom_snapshot=false
 v8_static_library=true
+enable_crel=false
 """
 
 def v8deps():
@@ -141,13 +142,6 @@ def build_gn_args():
         #
         # V8 itself fixed this in https://chromium-review.googlesource.com/c/v8/v8/+/3930160.
         gnargs += 'arm_control_flow_integrity="none"\n'
-
-    if args.os == "linux":
-        # These warnings are from third-party code that we don't want to patch.
-        gnargs += 'extra_cflags_cc=["-Wctad-maybe-unsupported", "-Wno-deprecated-copy-with-user-provided-copy", "-Wno-deprecated-declarations", "-Wno-invalid-offsetof", "-Wno-range-loop-construct", "-Wno-ctad-maybe-unsupported"]\n'
-
-    if args.os != "linux":
-        gnargs += 'crel="false"\n'
 
     return gnargs
 
