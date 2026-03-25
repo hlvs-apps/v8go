@@ -5,7 +5,7 @@
 [![Go Reference](https://pkg.go.dev/badge/katallaxie/v8go.svg)](https://pkg.go.dev/katallaxie/v8go)
 [![Test](https://github.com/katallaxie/v8go/actions/workflows/main.yml/badge.svg)](https://github.com/katallaxie/v8go/actions/workflows/main.yml)
 ![V8 Build](https://github.com/katallaxie/v8go/workflows/V8%20Build/badge.svg)
-![V8 Version](https://img.shields.io/badge/V8-14.6.650202-blue)
+![V8 Version](https://img.shields.io/badge/V8-14.6.206-blue)
 
 <img src="gopher.jpg" width="200px" alt="V8 Gopher based on original artwork from the amazing Renee French" />
 
@@ -238,7 +238,7 @@ variable.
 
 ## V8 dependency
 
-V8 version: **14.6.650202** (March 2026)
+V8 version: **4.6.206** (March 2026)
 
 In order to make `v8go` usable as a standard Go package, prebuilt static libraries of V8
 are included for Linux and macOS. you *should not* require to build V8 yourself.
