@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"math/rand"
 	"strings"
+	"sync"
 	"testing"
 
 	v8 "github.com/katallaxie/v8go"
@@ -305,16 +306,42 @@ const script = `
 `
 
 func BenchmarkIsolateInitAndRun(b *testing.B) {
-	b.ReportAllocs()
-	for n := 0; n < b.N; n++ {
-		vm := v8.NewIsolate()
-		ctx := v8.NewContext(vm)
-		ctx.RunScript(script, "main.js")
-		str, _ := json.Marshal(makeObject())
-		cmd := fmt.Sprintf("process(%s)", str)
-		ctx.RunScript(cmd, "cmd.js")
-		ctx.Close()
-		vm.Close() // force disposal of the VM
+	clients := []int{1000, 5000, 10000, 50000, 100000}
+	for _, c := range clients {
+		b.Run(fmt.Sprintf("process(%d)", c), func(b *testing.B) {
+			sem := make(chan struct{}, c) // limit concurrency to 10
+			wg := sync.WaitGroup{}
+			for n := 0; n < b.N; n++ {
+				wg.Add(1)
+
+				go func() {
+					defer wg.Done()
+					sem <- struct{}{}        // acquire semaphore
+					defer func() { <-sem }() // release semaphore
+
+					iso := v8.NewIsolate()
+					ctx := v8.NewContext(iso)
+					defer iso.Dispose()
+					defer ctx.Close()
+
+					_, err := ctx.RunScript(script, "script.js")
+					require.NoError(b, err)
+
+					obj := makeObject()
+					jsonStr, err := json.Marshal(obj)
+					require.NoError(b, err)
+
+					val, err := ctx.RunScript(fmt.Sprintf("process(%s)", jsonStr), "process.js")
+					require.NoError(b, err)
+
+					var res []map[string]interface{}
+					err = json.Unmarshal([]byte(val.String()), &res)
+					require.NoError(b, err)
+				}()
+			}
+
+			wg.Wait()
+		})
 	}
 }
 
