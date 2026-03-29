@@ -309,7 +309,7 @@ func BenchmarkIsolateInitAndRun(b *testing.B) {
 	clients := []int{1000, 5000, 10000, 50000, 100000}
 	for _, c := range clients {
 		b.Run(fmt.Sprintf("process(%d)", c), func(b *testing.B) {
-			sem := make(chan struct{}, c) // limit concurrency to 10
+			sem := make(chan struct{}, c)
 			wg := sync.WaitGroup{}
 			for n := 0; n < b.N; n++ {
 				wg.Add(1)
