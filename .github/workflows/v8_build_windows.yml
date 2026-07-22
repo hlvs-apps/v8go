@@ -37,8 +37,6 @@ jobs:
     env:
       # Use a local (MinGW) toolchain instead of letting gclient/gn pull MSVC.
       DEPOT_TOOLS_WIN_TOOLCHAIN: '0'
-      # Don't let depot_tools self-update mid-run (it can hang/break in CI).
-      DEPOT_TOOLS_UPDATE: '0'
       GCLIENT_PY3: '1'
     steps:
     - name: Setup MSYS2 (MinGW64)

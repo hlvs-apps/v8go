@@ -141,13 +141,22 @@ v8_enable_system_instrumentation=false
 """
 
 def v8deps():
-    spec = "solutions = %s\n" % gclient_sln
-    spec += "target_os = [%r]" % (v8_os(),)
+    # On Windows the spec is passed through `cmd /c` (see below); cmd truncates
+    # arguments at embedded newlines, so join the two statements with `; `
+    # (valid Python) instead of a newline there.
+    sep = "; " if is_windows else "\n"
+    spec = "solutions = %s%starget_os = [%r]" % (gclient_sln, sep, v8_os())
     env = os.environ.copy()
     env["PATH"] = tools_path + os.pathsep + env["PATH"]
-    subprocess_check_call(["gclient", "sync", "--delete_unversioned_trees", "--no-history", "--spec", spec],
-                        cwd=deps_path,
-                        env=env)
+    gclient_cmd = ["gclient", "sync", "--delete_unversioned_trees", "--no-history", "--spec", spec]
+    if is_windows:
+        # depot_tools ships `gclient` as a Bash script plus a `gclient.bat`
+        # wrapper. We drive the build from native (MinGW) Python, whose
+        # CreateProcess only resolves real executables (.exe) — it can't launch
+        # the Bash script and won't append .bat. Routing through `cmd /c` lets
+        # PATHEXT find gclient.bat and run the standard depot_tools Windows flow.
+        gclient_cmd = ["cmd", "/c"] + gclient_cmd
+    subprocess_check_call(gclient_cmd, cwd=deps_path, env=env)
 
 def build_gn_args():
     is_debug = args.debug
