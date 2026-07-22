@@ -20,8 +20,11 @@ MSYS2 package and re-run a Windows CI build.
 
 `018-bundled-zlib-mingw-cflags.patch` is **not** from MSYS2 — it's ours. MSYS2
 replaces V8's bundled zlib with the system package; we keep the bundled zlib, so
-we gate its MSVC `/wd` warning flags on `is_msvc` (added by `001`) instead of
-`is_win`, otherwise MinGW GCC treats `/wd4244` & co. as bogus input files.
+its `BUILD.gn` needs `is_win` split into `is_msvc` (added by `001`) in two ways:
+its MSVC `/wd` warning flags must only reach the real MSVC toolchain (MinGW GCC
+reads `/wd4244` & co. as bogus input files), and its GCC SIMD flags
+(`-mssse3`, `-msse4.2`, `-mpclmul`) must also reach MinGW, or the CRC32/adler32
+intrinsics fail to inline ("target specific option mismatch").
 
 ## Where each patch is applied
 
