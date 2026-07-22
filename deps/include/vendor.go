@@ -3,6 +3,6 @@
 package include
 
 import (
-	_ "github.com/katallaxie/v8go/deps/include/cppgc"
-	_ "github.com/katallaxie/v8go/deps/include/libplatform"
+	_ "github.com/hlvs-apps/v8go/deps/include/cppgc"
+	_ "github.com/hlvs-apps/v8go/deps/include/libplatform"
 )

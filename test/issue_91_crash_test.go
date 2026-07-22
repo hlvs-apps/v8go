@@ -3,7 +3,7 @@ package main
 import (
 	"testing"
 
-	v8 "github.com/katallaxie/v8go"
+	v8 "github.com/hlvs-apps/v8go"
 )
 
 func TestIssue91Crash(t *testing.T) {

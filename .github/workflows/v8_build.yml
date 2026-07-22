@@ -141,6 +141,13 @@ jobs:
     name: Commit Built Artifacts
     needs: [build, build_common]
     runs-on: ubuntu-latest
+    # create-pull-request needs to push a branch and open a PR. On a fork the
+    # default GITHUB_TOKEN is read-only unless we request these scopes (and the
+    # repo has "Allow GitHub Actions to create and approve pull requests"
+    # enabled under Settings → Actions).
+    permissions:
+      contents: write
+      pull-requests: write
     outputs:
       committed: ${{ steps.commit.outputs.committed }}
       sha: ${{ steps.create_summary.outputs.sha }}

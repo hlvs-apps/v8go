@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	v8 "github.com/katallaxie/v8go"
+	v8 "github.com/hlvs-apps/v8go"
 )
 
 func TestNewError(t *testing.T) {

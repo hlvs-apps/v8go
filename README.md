@@ -1,10 +1,10 @@
 # Execute JavaScript from Go
 
-<a href="https://github.com/katallaxie/v8go/releases"><img src="https://img.shields.io/github/v/release/katallaxie/v8go" alt="Github release"></a>
-[![Go Report Card](https://goreportcard.com/badge/katallaxie/v8go)](https://goreportcard.com/report/katallaxie/v8go)
-[![Go Reference](https://pkg.go.dev/badge/katallaxie/v8go.svg)](https://pkg.go.dev/katallaxie/v8go)
-[![Test](https://github.com/katallaxie/v8go/actions/workflows/main.yml/badge.svg)](https://github.com/katallaxie/v8go/actions/workflows/main.yml)
-![V8 Build](https://github.com/katallaxie/v8go/workflows/V8%20Build/badge.svg)
+<a href="https://github.com/hlvs-apps/v8go/releases"><img src="https://img.shields.io/github/v/release/hlvs-apps/v8go" alt="Github release"></a>
+[![Go Report Card](https://goreportcard.com/badge/hlvs-apps/v8go)](https://goreportcard.com/report/hlvs-apps/v8go)
+[![Go Reference](https://pkg.go.dev/badge/hlvs-apps/v8go.svg)](https://pkg.go.dev/hlvs-apps/v8go)
+[![Test](https://github.com/hlvs-apps/v8go/actions/workflows/main.yml/badge.svg)](https://github.com/hlvs-apps/v8go/actions/workflows/main.yml)
+![V8 Build](https://github.com/hlvs-apps/v8go/workflows/V8%20Build/badge.svg)
 ![V8 Version](https://img.shields.io/badge/V8-14.6.202.28-blue)
 
 <img src="gopher.jpg" width="200px" alt="V8 Gopher based on original artwork from the amazing Renee French" />
@@ -12,7 +12,7 @@
 ## Usage
 
 ```go
-import v8 "github.com/katallaxie/v8go"
+import v8 "github.com/hlvs-apps/v8go"
 ```
 
 ### Running a script
@@ -188,7 +188,7 @@ go vet ./...
 go test -bench=. | go tool golang.org/x/perf/cmd/benchstat -
 goos: linux
 goarch: arm64
-pkg: github.com/katallaxie/v8go
+pkg: github.com/hlvs-apps/v8go
                         │      -       │
                         │    sec/op    │
 Context-8                 117.9µ ± ∞ ¹
@@ -219,7 +219,7 @@ geomean                   12.55
 
 ## Documentation
 
-Go Reference & more examples: https://pkg.go.dev/katallaxie/v8go
+Go Reference & more examples: https://pkg.go.dev/hlvs-apps/v8go
 
 ### Support
 
@@ -268,15 +268,15 @@ This project also aims to keep up-to-date with the latest (stable) release of V8
 
 ### Upgrading the V8 binaries
 
-We have the [upgradev8](https://github.com/katallaxie/v8go/.github/workflow/v8upgrade.yml) workflow.
+We have the [upgradev8](https://github.com/hlvs-apps/v8go/.github/workflow/v8upgrade.yml) workflow.
 The workflow is triggered every day or manually.
 
-If the current [v8_version](https://github.com/katallaxie/v8go/deps/v8_version) is different from the latest stable version, the workflow takes care of fetching the latest stable v8 files and copying them into `deps/include`. The last step of the workflow opens a new PR with the branch name `v8_upgrade/<v8-version>` with all the changes.
+If the current [v8_version](https://github.com/hlvs-apps/v8go/deps/v8_version) is different from the latest stable version, the workflow takes care of fetching the latest stable v8 files and copying them into `deps/include`. The last step of the workflow opens a new PR with the branch name `v8_upgrade/<v8-version>` with all the changes.
 
 The next steps are:
 
 1) The build is not yet triggered automatically. To trigger it manually, go to the [V8
-Build](https://github.com/katallaxie/v8go/actions?query=workflow%3A%22V8+Build%22) Github Action, Select "Run workflow",
+Build](https://github.com/hlvs-apps/v8go/actions?query=workflow%3A%22V8+Build%22) Github Action, Select "Run workflow",
 and select your pushed branch eg. `v8_upgrade/<v8-version>`.
 1) Once built, this should open 3 PRs against your branch to add the `libv8.a` for Linux (for x86_64) and macOS for x86_64 and arm64; merge
 these PRs into your branch. You are now ready to raise the PR against `master` with the latest version of V8.

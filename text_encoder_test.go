@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	v8 "github.com/katallaxie/v8go"
+	v8 "github.com/hlvs-apps/v8go"
 )
 
 // joinBytes renders a byte slice the same way Array.from(uint8array).join(',')
@@ -24,7 +24,8 @@ func joinBytes(b []byte) string {
 }
 
 func TestContextInstallTextEncoder(t *testing.T) {
-	t.Parallel()
+	// Subtests share iso/ctx and the __input global, so this test is
+	// intentionally not parallel.
 	iso := v8.NewIsolate()
 	defer iso.Dispose()
 	ctx := v8.NewContext(iso)

@@ -11,7 +11,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/katallaxie/v8go"
+	"github.com/hlvs-apps/v8go"
 )
 
 func TestMain(m *testing.M) {

@@ -4,4 +4,4 @@
 package v8go
 
 // Ensure the appropriate cgo library is pulled in.
-import _ "github.com/katallaxie/v8go/deps/linux_amd64"
+import _ "github.com/hlvs-apps/v8go/deps/linux_amd64"
