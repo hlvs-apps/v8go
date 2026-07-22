@@ -18,6 +18,11 @@ The original numbering is preserved so that re-syncing from MSYS2 stays a simple
 file-by-file diff. To refresh for a new V8, pull the updated patches from the
 MSYS2 package and re-run a Windows CI build.
 
+`018-bundled-zlib-mingw-cflags.patch` is **not** from MSYS2 — it's ours. MSYS2
+replaces V8's bundled zlib with the system package; we keep the bundled zlib, so
+we gate its MSVC `/wd` warning flags on `is_msvc` (added by `001`) instead of
+`is_win`, otherwise MinGW GCC treats `/wd4244` & co. as bogus input files.
+
 ## Where each patch is applied
 
 `deps/build.py` applies these against specific submodule trees:

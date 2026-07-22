@@ -242,6 +242,10 @@ WINDOWS_SOURCE_PATCHES = [
     "013-builtin-deps-fixes",
     "014-heap-use-proper-sources",
     "017-highway-disable-avx10-on-mingw",
+    # Not from MSYS2: they swap in system zlib, but we build V8's bundled zlib,
+    # whose BUILD.gn feeds MSVC /wd flags to the compiler under is_win. Gate them
+    # on is_msvc so MinGW GCC doesn't choke on them.
+    "018-bundled-zlib-mingw-cflags",
 ]
 
 def apply_mingw_patches():
