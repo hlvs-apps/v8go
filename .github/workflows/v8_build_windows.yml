@@ -44,6 +44,9 @@ jobs:
       with:
         msystem: MINGW64
         update: true
+        # Inherit the runner's Windows PATH so depot_tools' bootstrap (run via
+        # `cmd /c gclient`) can find Git, which it expects already on PATH.
+        path-type: inherit
         install: >-
           git
           patch
