@@ -3,9 +3,19 @@ import argparse
 import glob
 import os
 import platform
+import re
 import shutil
 import subprocess
 import sys
+
+# Abseil is vendored into V8's binary and, by default, lives in the
+# `absl::lts_YYYYMMDD` (or `absl::head`) inline namespace. When a downstream Go
+# binary links this static V8 *and* another library that also links Abseil, the
+# two copies share those mangled symbol names and violate the ODR, which can
+# manifest as crashes or subtle misbehaviour. Renaming V8's Abseil inline
+# namespace to something unique keeps its symbols distinct. See
+# patch_absl_inline_namespace() below.
+ABSL_INLINE_NAMESPACE_NAME = "v8go"
 
 valid_archs = ['arm64', 'amd64']
 # "amd64" is called "x86_64" on everything but Windows.
@@ -197,6 +207,47 @@ def apply_build_patches():
         # These patches use deps/v8/build paths, so apply from repo root
         subprocess_check_call(["patch", "-p1", "-i", patch_path], cwd=repo_root)
 
+def patch_absl_inline_namespace():
+    """Rename V8's bundled Abseil inline namespace to a unique name.
+
+    Rewrites third_party/abseil-cpp/absl/base/options.h in place so that
+    ABSL_OPTION_INLINE_NAMESPACE_NAME becomes ABSL_INLINE_NAMESPACE_NAME (with
+    ABSL_OPTION_USE_INLINE_NAMESPACE forced on). This is done as a scripted
+    rewrite rather than a patch under patches/build/ because a context diff is
+    brittle across V8 (and therefore Abseil) rolls, whereas the two #define lines
+    this targets have been stable for years. Runs after `gclient sync` fetches
+    Abseil. Fails loudly if the file or the expected #defines are missing so a
+    silent, colliding build never ships.
+    """
+    options_path = os.path.join(
+        v8_path, "third_party", "abseil-cpp", "absl", "base", "options.h")
+    if not os.path.exists(options_path):
+        sys.exit("Abseil options.h not found at %s; cannot rename its inline "
+                 "namespace (has V8's Abseil layout changed?)" % options_path)
+
+    with open(options_path, "rt") as f:
+        content = f.read()
+
+    content, n_name = re.subn(
+        r"(#define\s+ABSL_OPTION_INLINE_NAMESPACE_NAME\s+)\w+",
+        r"\g<1>" + ABSL_INLINE_NAMESPACE_NAME,
+        content)
+    content, n_use = re.subn(
+        r"(#define\s+ABSL_OPTION_USE_INLINE_NAMESPACE\s+)\d+",
+        r"\g<1>1",
+        content)
+
+    if n_name == 0 or n_use == 0:
+        sys.exit("Failed to rename Abseil inline namespace in %s "
+                 "(name matches=%d, use matches=%d)" %
+                 (options_path, n_name, n_use))
+
+    with open(options_path, "wt") as f:
+        f.write(content)
+    print("%s: set ABSL inline namespace to '%s'" %
+          (sys.argv[0], ABSL_INLINE_NAMESPACE_NAME), file=sys.stderr)
+
+
 def update_last_change():
     out_path = os.path.join(v8_path, "build", "util", "LASTCHANGE")
     subprocess_check_call(["python", "build/util/lastchange.py", "-o", out_path], cwd=v8_path)
@@ -320,6 +371,7 @@ def allocate_disjoint_files(ar_files, case_sensitive=True):
 def main():
     v8deps()
     apply_build_patches()
+    patch_absl_inline_namespace()
     if is_windows:
         apply_mingw_patches()
 
