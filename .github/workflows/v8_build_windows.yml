@@ -61,6 +61,14 @@ jobs:
         submodules: true
         fetch-depth: 1
 
+    - name: Fresh depot_tools
+      # The submodule checkout is a shallow, detached clone, which depot_tools
+      # can't self-update ("Failed to update depot_tools" -> abort). Replace it
+      # with a normal clone so its Windows bootstrap/self-update works.
+      run: |
+        rm -rf deps/depot_tools
+        git clone https://chromium.googlesource.com/chromium/tools/depot_tools.git deps/depot_tools
+
     - name: Toolchain versions
       run: |
         gcc --version | head -1

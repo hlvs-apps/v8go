@@ -149,6 +149,12 @@ def v8deps():
     env = os.environ.copy()
     env["PATH"] = tools_path + os.pathsep + env["PATH"]
     gclient_cmd = ["gclient", "sync", "--delete_unversioned_trees", "--no-history", "--spec", spec]
+    if is_windows_build:
+        # Skip DEPS hooks on Windows: they download the MSVC/clang toolchains and
+        # gn/ninja, none of which we use (we build with MSYS2's MinGW toolchain).
+        # The one build input a hook would otherwise generate, gclient_args.gni,
+        # is written by apply_mingw_patches().
+        gclient_cmd.append("--nohooks")
     if is_windows:
         # depot_tools ships `gclient` as a Bash script plus a `gclient.bat`
         # wrapper. We drive the build from native (MinGW) Python, whose
@@ -247,6 +253,12 @@ def apply_mingw_patches():
     for patch_name in WINDOWS_SOURCE_PATCHES:
         apply_windows_patch(patch_name, v8_path)
     update_last_change()
+
+    # GN's BUILDCONFIG imports //build/config/gclient_args.gni, which is normally
+    # produced by a gclient hook. We sync with --nohooks, so write it ourselves.
+    gclient_args = os.path.join(v8_build_path, "config", "gclient_args.gni")
+    with open(gclient_args, "wt") as f:
+        f.write("build_with_chromium = false\n")
 
 def apply_windows_patch(patch_name, working_dir):
     patch_path = os.path.join(
