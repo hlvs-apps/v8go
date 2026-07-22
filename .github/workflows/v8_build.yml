@@ -167,8 +167,14 @@ jobs:
 
         cd deps/v8
         git fetch --depth=1 origin "$latest_v8_hash"
-        # --tags is slow, so we do it separately for debugability.
-        git fetch --tags origin
+        # --tags is slow and the V8 remote occasionally hangs up mid-fetch.
+        # Retry a few times, then fall back to the raw hash: the version tag is
+        # only used to prettify the commit message and checkout.
+        for attempt in 1 2 3; do
+          git fetch --tags origin && break
+          echo "::warning::git fetch --tags failed (attempt $attempt/3); retrying in 15s"
+          sleep 15
+        done
         # V8 also adds a <version>-pgo tag we don't care about.
         latest_v8_version="$(git tag --points-at "$latest_v8_hash" | grep -v -- '-pgo' | head -n1)"
         git checkout "${latest_v8_version:-$latest_v8_hash}"
