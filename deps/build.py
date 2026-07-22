@@ -49,7 +49,12 @@ deps_path = os.path.dirname(os.path.realpath(__file__))
 v8_path = os.path.join(deps_path, "v8")
 tools_path = os.path.join(deps_path, "depot_tools")
 is_windows = platform.system().lower() == "windows"
-is_clang = args.clang if args.clang is not None else True
+# Whether we are *targeting* Windows. Keyed off the requested --os (not the host)
+# so the MinGW patch/toolchain logic is explicit; on our CI this coincides with
+# `is_windows` because we build the Windows library natively under MSYS2.
+is_windows_build = args.os == "windows"
+# MinGW builds default to GCC. `--clang` still forces Clang (MSYS2 CLANG64).
+is_clang = args.clang if args.clang is not None else (not is_windows_build)
 
 def get_custom_deps():
     # These deps are unnecessary for building.
@@ -117,6 +122,24 @@ v8_static_library=true
 enable_crel=false
 """
 
+# Extra GN args for the MinGW-w64 toolchain, mirroring the MSYS2 mingw-w64-v8
+# package. Appended (for --os windows) on top of gn_args above. These disable
+# features that assume MSVC/lld/rust or otherwise don't build under MinGW.
+WINDOWS_GN_ARGS = """
+use_lld=false
+use_siso=false
+enable_rust=false
+enable_iterator_debugging=false
+chrome_pgo_phase=0
+win_enable_cfg_guards=true
+v8_symbol_level=0
+v8_enable_partition_alloc=false
+v8_enable_verify_heap=false
+v8_enable_etw_stack_walking=false
+v8_enable_fuzztest=false
+v8_enable_system_instrumentation=false
+"""
+
 def v8deps():
     spec = "solutions = %s\n" % gclient_sln
     spec += "target_os = [%r]" % (v8_os(),)
@@ -152,6 +175,8 @@ def build_gn_args():
         #
         # V8 itself fixed this in https://chromium-review.googlesource.com/c/v8/v8/+/3930160.
         gnargs += 'arm_control_flow_integrity="none"\n'
+    if is_windows_build:
+        gnargs += WINDOWS_GN_ARGS
 
     return gnargs
 
@@ -166,32 +191,60 @@ def subprocess_check_output_text(cmdargs, *pargs, **kwargs):
     return subprocess.check_output(cmd(cmdargs), *pargs, **kwargs).decode('utf-8')
 
 def cmd(args):
-    return ["cmd", "/c"] + args if is_windows else args
+    # build.py runs under the MSYS2 shell on Windows, so every tool it shells out
+    # to (gn, ninja, ar, git, patch, python) is a real executable already on
+    # PATH — no legacy `cmd /c` wrapping needed.
+    return args
 
 def os_arch():
     return args.os + "_" + args.arch
 
 def v8_os():
-    return args.os.replace('darwin', 'mac')
+    # GN / gclient spell these "mac" and "win"; the Go GOOS names (used for the
+    # deps/<os>_<arch> directory via os_arch()) are "darwin" and "windows".
+    return args.os.replace('darwin', 'mac').replace('windows', 'win')
 
 def v8_arch():
     if args.arch == "amd64":
         return "x64"
     return args.arch
 
+# MinGW patches from patches/windows/, in the order the MSYS2 mingw-w64-v8
+# package applies them. 001 patches deps/v8/build, 015 patches Abseil, the rest
+# patch the V8 source root. See patches/windows/README.md for provenance and for
+# why 007/016 (system zlib) are intentionally omitted.
+WINDOWS_SOURCE_PATCHES = [
+    "002-buildflags-fixes",
+    "003-fix-macros-and-functions",
+    "004-fix-static-assert-implementations",
+    "005-fix-conflicting-macros",
+    "006-support-clang-in-mingw-mode",
+    "008-prioritized-native-thread-on-windows",
+    "009-unicode-for-wide-char-functions",
+    "010-disable-msvc-hack",
+    "011-make-sure-that-__rdtsc-is-declared",
+    "012-remove-dllimport-attributes",
+    "013-builtin-deps-fixes",
+    "014-heap-use-proper-sources",
+    "017-highway-disable-avx10-on-mingw",
+]
+
 def apply_mingw_patches():
     v8_build_path = os.path.join(v8_path, "build")
-    apply_patch("0000-add-mingw-main-code-changes", v8_path)
-    apply_patch("0001-add-mingw-toolchain", v8_build_path)
-    update_last_change()
-    zlib_path = os.path.join(v8_path, "third_party", "zlib")
-    zlib_src_gn = os.path.join(deps_path, os_arch(), "zlib.gn")
-    zlib_dst_gn = os.path.join(zlib_path, "BUILD.gn")
-    shutil.copy(zlib_src_gn, zlib_dst_gn)
+    abseil_path = os.path.join(v8_path, "third_party", "abseil-cpp")
 
-def apply_patch(patch_name, working_dir):
-    patch_path = os.path.join(deps_path, os_arch(), patch_name + ".patch")
-    subprocess_check_call(["git", "apply", "-v", patch_path], cwd=working_dir)
+    apply_windows_patch("001-add-mingw-toolchain", v8_build_path)
+    apply_windows_patch("015-abseil-build-as-static-lib", abseil_path)
+    for patch_name in WINDOWS_SOURCE_PATCHES:
+        apply_windows_patch(patch_name, v8_path)
+    update_last_change()
+
+def apply_windows_patch(patch_name, working_dir):
+    patch_path = os.path.join(
+        os.path.dirname(deps_path), "patches", "windows", patch_name + ".patch")
+    # `patch` (not `git apply`): several of these patches are `diff -ruN` output
+    # with timestamped headers that git's stricter parser rejects.
+    subprocess_check_call(["patch", "-p1", "-i", patch_path], cwd=working_dir)
 
 def apply_build_patches():
     """Apply patches to files downloaded by gclient (v8/build/, etc.)."""
@@ -369,16 +422,30 @@ def allocate_disjoint_files(ar_files, case_sensitive=True):
     return ar_file_groups
 
 def main():
+    if is_windows_build:
+        # Build V8 with the MinGW-w64 toolchain (see patches/windows/). Pointing
+        # CXX at g++/clang++ is what flips GN's `is_mingw` on (added by patch
+        # 001), and DEPOT_TOOLS_WIN_TOOLCHAIN=0 stops gclient from trying to
+        # fetch the MSVC toolchain.
+        os.environ.setdefault("CC", "clang" if is_clang else "gcc")
+        os.environ.setdefault("CXX", "clang++" if is_clang else "g++")
+        os.environ.setdefault("DEPOT_TOOLS_WIN_TOOLCHAIN", "0")
+
     v8deps()
     apply_build_patches()
     patch_absl_inline_namespace()
-    if is_windows:
+    if is_windows_build:
         apply_mingw_patches()
 
-    gn_path = os.path.join(tools_path, "gn")
-    assert(os.path.exists(gn_path))
-    ninja_path = os.path.join(tools_path, "ninja" + (".exe" if is_windows else ""))
-    assert(os.path.exists(ninja_path))
+    if is_windows_build:
+        # Use the MSYS2-provided gn/ninja; the depot_tools copies assume MSVC.
+        gn_path = "gn"
+        ninja_path = "ninja"
+    else:
+        gn_path = os.path.join(tools_path, "gn")
+        assert(os.path.exists(gn_path))
+        ninja_path = os.path.join(tools_path, "ninja" + (".exe" if is_windows else ""))
+        assert(os.path.exists(ninja_path))
 
     build_path = os.path.join(deps_path, ".build", os_arch())
 

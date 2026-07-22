@@ -1,0 +1,106 @@
+name: V8 Build (Windows, experimental)
+
+# Standalone harness for bringing up the MinGW-w64 Windows V8 build. It only
+# builds deps/windows_amd64/libv8.a and uploads it as an artifact — it does NOT
+# commit or open a PR, so it can be iterated on freely without touching the
+# production v8_build.yml flow. Once this is reliably green, the windows target
+# gets folded into v8_build.yml + test.yml.
+#
+# Trigger manually: gh workflow run v8_build_windows.yml --ref <branch>
+
+on:
+  # Runs from the branch's own definition on every push, so it can be iterated
+  # on before this workflow ever reaches the default branch. Windows runners are
+  # a separate pool, so this never competes with the linux/macos V8 builds.
+  push:
+    branches:
+    - hlvs-apps/fix-windows-build
+    paths:
+    - deps/build.py
+    - deps/update_cgo.py
+    - patches/windows/**
+    - .github/workflows/v8_build_windows.yml
+  workflow_dispatch:
+    inputs:
+      v8_hash:
+        description: V8 commit hash to build at (defaults to deps/v8_hash).
+        required: false
+        type: string
+
+jobs:
+  build_windows:
+    name: Build V8 for windows amd64 (MinGW)
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: msys2 {0}
+    env:
+      # Use a local (MinGW) toolchain instead of letting gclient/gn pull MSVC.
+      DEPOT_TOOLS_WIN_TOOLCHAIN: '0'
+      # Don't let depot_tools self-update mid-run (it can hang/break in CI).
+      DEPOT_TOOLS_UPDATE: '0'
+      GCLIENT_PY3: '1'
+    steps:
+    - name: Setup MSYS2 (MinGW64)
+      uses: msys2/setup-msys2@v2
+      with:
+        msystem: MINGW64
+        update: true
+        install: >-
+          git
+          patch
+          tar
+          python
+          mingw-w64-x86_64-gcc
+          mingw-w64-x86_64-gn
+          mingw-w64-x86_64-ninja
+          mingw-w64-x86_64-python
+          mingw-w64-x86_64-pkgconf
+
+    - name: Checkout
+      uses: actions/checkout@v7
+      with:
+        submodules: true
+        fetch-depth: 1
+
+    - name: Toolchain versions
+      run: |
+        gcc --version | head -1
+        g++ --version | head -1
+        gn --version || true
+        ninja --version || true
+        python --version
+
+    - name: Update to requested V8
+      run: |
+        latest_v8_hash="${{ inputs.v8_hash }}"
+        latest_v8_hash="${latest_v8_hash:-$(<deps/v8_hash)}"
+        cd deps/v8
+        git fetch --depth=1 origin "$latest_v8_hash"
+        git checkout "$latest_v8_hash"
+
+    - name: Apply repo patches
+      run: |
+        if [ -d patches ]; then
+          for f in patches/*.patch; do
+            echo "Apply $f"
+            patch -p1 -i "$f"
+          done
+        fi
+
+    - name: Update depot_tools fetch config
+      run: cd deps/depot_tools && git config --unset-all remote.origin.fetch; git config --add remote.origin.fetch +refs/heads/*:refs/remotes/origin/*
+
+    - name: Build V8 (windows/amd64, MinGW)
+      run: cd deps && ./build.py --verbose --arch amd64 --os windows
+
+    - name: Upload libv8 artifact
+      if: success()
+      uses: actions/upload-artifact@v7
+      with:
+        name: windows_amd64
+        if-no-files-found: error
+        path: |
+          deps/windows_amd64/
+          !deps/windows_amd64/vendor.go
+        retention-days: 2

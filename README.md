@@ -228,13 +228,19 @@ please join the [**#v8go**](https://gophers.slack.com/channels/v8go) channel on 
 
 ### Windows
 
-There used to be Windows binary support. For further information see, [PR #234](https://github.com/katallaxie/v8go/pull/234).
+Windows support is being reintroduced via the **MinGW-w64** toolchain (the one
+cgo links with on Windows). The V8 static library is built in CI from the
+patches under [`patches/windows/`](patches/windows/), which are vendored from the
+actively-maintained [MSYS2 `mingw-w64-v8`](https://github.com/msys2/MINGW-packages/tree/master/mingw-w64-v8)
+package and track the same V8 version this fork pins. `deps/build.py` applies
+them (see `apply_mingw_patches()`) on top of the `gclient`-fetched V8 tree when
+invoked with `--os windows`.
 
-The v8go library would welcome contributions from anyone able to get an external windows
-build of the V8 library linking with v8go, using the version of V8 checked out in the
-`deps/v8` git submodule, and documentation of the process involved. This process will likely
-involve passing a linker flag when building v8go (e.g. using the `CGO_LDFLAGS` environment
-variable.
+This is still being brought up in CI (`.github/workflows/v8_build_windows.yml`);
+until it lands in the main build + test matrices, treat Windows as experimental.
+
+> Historical note: Windows support was previously removed upstream in
+> [rogchap/v8go#234](https://github.com/rogchap/v8go/pull/234).
 
 ## V8 dependency
 
