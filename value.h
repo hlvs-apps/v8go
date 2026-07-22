@@ -164,6 +164,11 @@ extern void* BackingStoreData(BackingStorePtr ptr);
 extern size_t BackingStoreByteLength(BackingStorePtr ptr);
 extern BackingStorePtr SharedArrayBufferGetBackingStore(ValuePtr ptr);
 
+extern size_t ArrayBufferViewByteLength(ValuePtr ptr);
+extern size_t ArrayBufferViewCopyContents(ValuePtr ptr,
+                                          void* dest,
+                                          size_t byte_length);
+
 #ifdef __cplusplus
 }
 

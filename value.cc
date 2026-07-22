@@ -3,6 +3,7 @@
 #include <stdlib.h>
 
 #include "context.h"
+#include "deps/include/v8-array-buffer.h"
 #include "deps/include/v8-context.h"
 #include "deps/include/v8-exception.h"
 #include "errors.h"
@@ -596,4 +597,22 @@ RtnString ValueTypeOf(ValuePtr ptr) {
   LOCAL_VALUE(ptr);
   Local<String> result = value->TypeOf(iso);
   return StringToRtnString(iso, result);
+}
+
+size_t ArrayBufferViewByteLength(ValuePtr ptr) {
+  LOCAL_VALUE(ptr);
+  if (!value->IsArrayBufferView()) {
+    return 0;
+  }
+  return value.As<ArrayBufferView>()->ByteLength();
+}
+
+size_t ArrayBufferViewCopyContents(ValuePtr ptr,
+                                   void* dest,
+                                   size_t byte_length) {
+  LOCAL_VALUE(ptr);
+  if (!value->IsArrayBufferView()) {
+    return 0;
+  }
+  return value.As<ArrayBufferView>()->CopyContents(dest, byte_length);
 }

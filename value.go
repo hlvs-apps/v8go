@@ -616,6 +616,30 @@ func (v *Value) SharedArrayBufferGetContents() ([]byte, func(), error) {
 	return byte_slice, release, nil
 }
 
+// ArrayBufferViewBytes copies the bytes viewed by this value into a new,
+// Go-owned byte slice and returns it. The value must be an ArrayBufferView —
+// for example a Uint8Array, any other typed array, or a DataView. If it is not,
+// ArrayBufferViewBytes returns nil.
+//
+// Unlike SharedArrayBufferGetContents, the returned slice is an independent copy
+// that does not alias V8-managed memory: it stays valid after the value (or its
+// context) is released and needs no cleanup. It performs a single memcpy out of
+// V8 and is binary-safe — every byte value round-trips exactly.
+func (v *Value) ArrayBufferViewBytes() []byte {
+	if !v.IsArrayBufferView() {
+		return nil
+	}
+
+	length := C.ArrayBufferViewByteLength(v.ptr)
+	if length == 0 {
+		return []byte{}
+	}
+
+	buf := make([]byte, int(length))
+	C.ArrayBufferViewCopyContents(v.ptr, unsafe.Pointer(&buf[0]), length)
+	return buf
+}
+
 func (v *Value) StrictEquals(other *Value) bool {
 	return C.ValueStrictEquals(v.ptr, other.ptr) != 0
 }
