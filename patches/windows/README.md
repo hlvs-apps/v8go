@@ -18,6 +18,14 @@ The original numbering is preserved so that re-syncing from MSYS2 stays a simple
 file-by-file diff. To refresh for a new V8, pull the updated patches from the
 MSYS2 package and re-run a Windows CI build.
 
+**Local modification to `001`:** its `link_command` puts the linker
+`--start-group` around only the system libraries, leaving the V8 archives
+(`@rspfile`) outside it. That works for MSYS2, which links `mksnapshot`/`d8`
+against *shared* libs, but we build everything static, so the circular
+dependencies between `libv8_compiler.a`/`libv8_base.a`/`libv8_libbase.a` fail to
+resolve when linking `mksnapshot.exe`. We moved `--start-group` back in front of
+`@rspfile` so the static archives are grouped (matching upstream V8's toolchain).
+
 `018-bundled-zlib-mingw-cflags.patch` is **not** from MSYS2 — it's ours. MSYS2
 replaces V8's bundled zlib with the system package; we keep the bundled zlib, so
 its `BUILD.gn` needs `is_win` split into `is_msvc` (added by `001`) in two ways:
