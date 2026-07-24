@@ -359,12 +359,29 @@ def split_ar(src_fn, dest_fn, dest_obj_dn):
         cwd=v8_path)
     ar_files = ar_files.splitlines()
 
-    # Treat case-insensitive filesystems (macOS and Windows) as non-case-
-    # sensitive so members that differ only in case aren't extracted into the
-    # same pass and clobber each other on disk (e.g. the inspector's Runtime.o
-    # vs V8's runtime.o). On Darwin, llvm-ar (--clang) additionally lowercases
-    # names on extraction; either way the lowercased canonical name is correct.
-    case_sensitive = args.os not in ("darwin", "windows")
+    # How "ar xN" counts occurrences depends on the ar in use: Darwin's llvm-ar
+    # matches member names case-insensitively (and lowercases them on
+    # extraction), while GNU ar (Linux, Windows/MinGW) matches case-sensitively
+    # and preserves case. The occurrence index must be counted the same way, so
+    # only Darwin is treated as case-insensitive here.
+    case_sensitive = args.os != "darwin"
+
+    # macOS and Windows have case-insensitive filesystems: two members whose
+    # extracted names differ only in case (e.g. the inspector's Runtime.o vs
+    # V8's runtime.o) would clobber each other if a single "ar" call extracted
+    # both into the same directory. These are distinct members with their own
+    # occurrence index, so we can't merge them (that would drop one, causing
+    # "undefined reference" link errors) — instead we extract and rename them in
+    # separate passes so the on-disk collision never happens.
+    fs_case_insensitive = args.os in ("darwin", "windows")
+
+    def extracted_name(ar_file):
+        # Filename the member lands under: Darwin's llvm-ar lowercases it.
+        return ar_file if case_sensitive else ar_file.lower()
+
+    def collision_key(ar_file):
+        name = extracted_name(ar_file)
+        return name.lower() if fs_case_insensitive else name
 
     # Extracting files one-by-one is slow, so let's group them into
     # disjoint sets and use "ar N"... Complicated by the occasional
@@ -372,20 +389,35 @@ def split_ar(src_fn, dest_fn, dest_obj_dn):
     ar_file_groups = allocate_disjoint_files(ar_files, case_sensitive)
 
     j = 0
-    for i, ar_files in ar_file_groups:
-        subprocess_check_call(
-            [
-                ar_path,
-                "xN",
-                "--output", dest_obj_dn,
-                str(1 + i),
-                src_fn,
-            ] + ar_files,
-            cwd=v8_path)
-        for ar_file in ar_files:
-            ar_file_canon = ar_file if case_sensitive else ar_file.lower()
-            os.rename(os.path.join(dest_obj_dn, ar_file_canon), os.path.join(dest_obj_dn, "{}.{}".format(1 + j, ar_file)))
-            j += 1
+    for i, group_files in ar_file_groups:
+        # Within a group every member is the (i+1)-th occurrence of its name, so
+        # they share one "ar xN" index. Split further so no single call extracts
+        # two members that collide on a case-insensitive filesystem.
+        batches = []  # [(files, keys)]
+        for ar_file in group_files:
+            key = collision_key(ar_file)
+            for files, keys in batches:
+                if key not in keys:
+                    files.append(ar_file)
+                    keys.add(key)
+                    break
+            else:
+                batches.append(([ar_file], {key}))
+        for files, _keys in batches:
+            subprocess_check_call(
+                [
+                    ar_path,
+                    "xN",
+                    "--output", dest_obj_dn,
+                    str(1 + i),
+                    src_fn,
+                ] + files,
+                cwd=v8_path)
+            for ar_file in files:
+                os.rename(
+                    os.path.join(dest_obj_dn, extracted_name(ar_file)),
+                    os.path.join(dest_obj_dn, "{}.{}".format(1 + j, ar_file)))
+                j += 1
 
     file_groups = [] # [(file, size)]
     size = 0
