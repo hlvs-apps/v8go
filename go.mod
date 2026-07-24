@@ -20,11 +20,11 @@ replace (
 )
 
 require (
-	github.com/hlvs-apps/v8go/deps/darwin_amd64 v0.0.0-20260315151123-d0268b3f2f32
-	github.com/hlvs-apps/v8go/deps/darwin_arm64 v0.0.0-20260315151123-d0268b3f2f32
-	github.com/hlvs-apps/v8go/deps/linux_amd64 v0.0.0-20260315151123-d0268b3f2f32
-	github.com/hlvs-apps/v8go/deps/linux_arm64 v0.0.0-20260315151123-d0268b3f2f32
-	github.com/hlvs-apps/v8go/deps/windows_amd64 v0.0.0-20260315151123-d0268b3f2f32
+	github.com/hlvs-apps/v8go/deps/darwin_amd64 v0.0.0-20260722231926-2e9394fa4aa2
+	github.com/hlvs-apps/v8go/deps/darwin_arm64 v0.0.0-20260722231926-2e9394fa4aa2
+	github.com/hlvs-apps/v8go/deps/linux_amd64 v0.0.0-20260722231926-2e9394fa4aa2
+	github.com/hlvs-apps/v8go/deps/linux_arm64 v0.0.0-20260722231926-2e9394fa4aa2
+	github.com/hlvs-apps/v8go/deps/windows_amd64 v0.0.0-20260722231926-2e9394fa4aa2
 	github.com/stretchr/testify v1.11.1
 )
 
