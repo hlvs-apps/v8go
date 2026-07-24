@@ -23,7 +23,9 @@ typedef struct v8InspectorClient v8InspectorClient;
 
 typedef struct v8Isolate v8Isolate;
 
-typedef _Bool bool;
+// Provides `bool` for the C compiler. Not a plain `typedef _Bool bool;`: under
+// C23 (e.g. MinGW's GCC 16 default) `bool` is a keyword and can't be typedef'd.
+#include <stdbool.h>
 
 #endif
 

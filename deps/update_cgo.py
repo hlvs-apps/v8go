@@ -39,6 +39,16 @@ def format_ldflags_libs(os, arch, libs):
     if os == "darwin":
         # V8's partition allocator may call SecTask* APIs for MAP_JIT checks.
         ldflags += " -framework Security"
+    if os == "windows":
+        # System libraries that V8 and its bundled Abseil reference on Windows
+        # (v8_libbase -> dbghelp/winmm/ws2_32, Abseil -> bcrypt, etc.). Static
+        # archives don't carry these, so cgo has to name them explicitly.
+        ldflags += (" -ldbghelp -lwinmm -lws2_32 -ladvapi32 -lbcrypt"
+                    " -lshlwapi -luserenv -lpsapi -lole32 -loleaut32"
+                    " -luuid -lshell32 -luser32 -lversion")
+        # Link the MinGW runtime statically so consumers don't need the
+        # libgcc/libstdc++/libwinpthread DLLs alongside their binary.
+        ldflags += " -static"
     return ldflags
 
 

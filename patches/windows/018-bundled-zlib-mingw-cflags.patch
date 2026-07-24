@@ -1,0 +1,29 @@
+--- a/third_party/zlib/BUILD.gn
++++ b/third_party/zlib/BUILD.gn
+@@ -39,7 +39,7 @@
+     defines += [ "ZLIB_DEBUG" ]
+   }
+ 
+-  if (is_win && !is_clang) {
++  if (is_msvc && !is_clang) {
+     # V8 supports building with msvc, these silence some warnings that
+     # causes compilation to fail (https://crbug.com/1255096).
+     cflags = [
+@@ -99,7 +99,7 @@
+       "adler32_simd.h",
+     ]
+ 
+-    if (!is_win || is_clang) {
++    if (!is_msvc || is_clang) {
+       cflags = [ "-mssse3" ]
+     }
+   }
+@@ -235,7 +235,7 @@
+       "crc_folding.c",
+     ]
+ 
+-    if (!is_win || is_clang) {
++    if (!is_msvc || is_clang) {
+       cflags = [
+         "-msse4.2",
+         "-mpclmul",
