@@ -135,3 +135,64 @@ jobs:
           deps/windows_amd64/
           !deps/windows_amd64/vendor.go
         retention-days: 2
+
+  # Proves the cgo side: link the Go package against the freshly-built lib and
+  # run the tests with the MinGW toolchain. This is what actually validates the
+  # update_cgo.py Windows LDFLAGS and that v8go works on Windows at runtime.
+  test_windows:
+    name: Test v8go on windows amd64 (MinGW)
+    needs: build_windows
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+    - name: Setup MSYS2 (MinGW64)
+      uses: msys2/setup-msys2@v2
+      with:
+        msystem: MINGW64
+        update: true
+        path-type: inherit
+        install: >-
+          python
+          mingw-w64-x86_64-gcc
+          mingw-w64-x86_64-pkgconf
+
+    - name: Checkout
+      # No submodules: the test doesn't need the V8 source tree, only the Go
+      # sources and the prebuilt lib downloaded below.
+      uses: actions/checkout@v7
+      with:
+        fetch-depth: 1
+
+    - name: Setup Go
+      uses: actions/setup-go@v6
+      with:
+        go-version-file: ./go.mod
+
+    - name: Download libv8 artifact
+      uses: actions/download-artifact@v8
+      with:
+        name: windows_amd64
+        path: deps/windows_amd64
+
+    - name: Generate cgo bindings (update_cgo.py)
+      run: python deps/update_cgo.py
+
+    - name: Wire the windows module into the workspace
+      run: go work use ./deps/windows_amd64
+
+    - name: Show generated cgo wiring
+      run: |
+        echo "--- cgo_windows_amd64.go ---"; cat cgo_windows_amd64.go
+        echo "--- deps/windows_amd64/cgo.go ---"; cat deps/windows_amd64/cgo.go
+
+    - name: go build
+      env:
+        CGO_ENABLED: '1'
+      run: go build -v .
+
+    - name: go test (short)
+      env:
+        CGO_ENABLED: '1'
+      run: go test -short -count=1 -v .
