@@ -30,15 +30,9 @@ Most of the code here is upstream's work. It is distributed under the
 BSD-3-Clause terms in [LICENSE](LICENSE), Copyright (c) 2019 Roger Chapman and
 the v8go contributors.
 
-The git history is rooted on rogchap's original commits — they keep their
-original hashes and PGP signatures, so they can be verified against upstream —
-rather than being collapsed into a single initial commit. `git log` therefore
-shows the full lineage of the project.
-
 ### What this repository adds
 
-- **Current V8.** Tracks recent V8 releases (currently 14.6.202.28) with
-  binaries built in CI, rather than the 11.x series upstream stopped at.
+- **Current V8.** Tracks recent V8 releases (currently 14.6.202.28)
 - **Windows (amd64) support** via the MinGW-w64 toolchain — see
   [Windows](#windows).
 - **`Value.ArrayBufferViewBytes() []byte`** — copies the bytes of any
@@ -259,11 +253,6 @@ geomean                   12.55
 ## Documentation
 
 Go Reference & more examples: https://pkg.go.dev/hlvs-apps/v8go
-
-### Support
-
-If you would like to ask questions about this library or want to keep up-to-date with the latest changes and releases,
-please join the [**#v8go**](https://gophers.slack.com/channels/v8go) channel on Gophers Slack. [Click here to join the Gophers Slack community!](https://invite.slack.golangbridge.org/)
 
 ### Windows
 
