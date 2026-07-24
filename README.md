@@ -291,7 +291,10 @@ invoked with `--os windows`.
 V8 version: **14.6.202.28** (March 2026)
 
 In order to make `v8go` usable as a standard Go package, prebuilt static libraries of V8
-are included for Linux, macOS and Windows. you *should not* require to build V8 yourself.
+are included for Linux (amd64 and arm64), macOS (amd64 and arm64) and Windows (amd64), so
+you *should not* need to build V8 yourself. Each platform's library lives in its own Go
+module under `deps/<os>_<arch>/`, split into `libv8-N.a` parts to stay under GitHub's
+100 MiB file size limit.
 
 Due to security concerns of binary blobs hiding malicious code, the V8 binary is built via CI *ONLY*.
 
@@ -328,8 +331,29 @@ The next steps are:
 1) The build is not yet triggered automatically. To trigger it manually, go to the [V8
 Build](https://github.com/hlvs-apps/v8go/actions?query=workflow%3A%22V8+Build%22) Github Action, Select "Run workflow",
 and select your pushed branch eg. `v8_upgrade/<v8-version>`.
-1) Once built, this should open 3 PRs against your branch to add the `libv8.a` for Linux (for x86_64) and macOS for x86_64 and arm64; merge
-these PRs into your branch. You are now ready to raise the PR against `main` with the latest version of V8.
+1) Once built, this opens a PR against your branch for each supported platform —
+Linux (amd64 and arm64), macOS (amd64 and arm64) and Windows (amd64) — adding that
+platform's static library under `deps/<os>_<arch>/`. GitHub's hard file size limit is
+100 MiB, so each library is committed as a set of split archive parts (`libv8-0.a`,
+`libv8-1.a`, …) listed in that directory's `libmanifest`; `deps/build.py` (see
+`split_ar()`) produces them and cgo links the parts. Merge these PRs into your branch.
+
+1) **Re-pin the `deps/*` modules.** Each `deps/<os>_<arch>` directory is its own Go
+module, and the root `go.mod` `require`s all five at a pseudo-version. Bump those five
+lines to a commit that contains **every** `deps/*/go.mod` together with the newly built
+binaries — normally the commit that merged the last platform PR. Be careful here: the
+`replace ... => ./deps/...` directives hide a wrong pin during local development,
+because a `replace` only applies while `v8go` is the main module. A consumer running
+`go get github.com/hlvs-apps/v8go@main` resolves the pseudo-versions for real and fails
+with `invalid version: missing .../go.mod at revision ...` if the pinned commit predates
+a platform. Verify from outside the repo before releasing:
+
+    ```
+    cd $(mktemp -d) && go mod init check
+    go get github.com/hlvs-apps/v8go@main
+    ```
+
+You are now ready to raise the PR against `main` with the latest version of V8.
 
 ### Flushing after C/C++ standard library printing for debugging
 
