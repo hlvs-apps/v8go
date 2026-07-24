@@ -79,8 +79,35 @@ def create_vendor_files(src_path, module):
             temp_file.write(vendor_file_template % (directory, directory))
 
 
+def copy_v8_licenses(dest_path):
+    """Copies V8's own license files next to the headers vendored from V8.
+
+    deps/include/ is V8 source redistributed verbatim, so V8's BSD-3-Clause
+    notice has to travel with it. This directory is wiped and recopied on every
+    run (and by CI), so the notice must be reproduced by the build rather than
+    committed by hand.
+    """
+    copied = []
+    for name in sorted(os.listdir(v8_path)):
+        if not name.lower().startswith(("license", "licence", "copying")):
+            continue
+        src = os.path.join(v8_path, name)
+        if not os.path.isfile(src):
+            continue
+        shutil.copyfile(src, os.path.join(dest_path, name))
+        copied.append(name)
+
+    if not copied:
+        raise AssertionError(
+            "no license files found in %s; refusing to vendor V8 headers "
+            "without their copyright notice" % v8_path)
+    print("copied V8 license files into %s: %s" %
+          (dest_path, ", ".join(copied)))
+
+
 if __name__ == "__main__":
     module = get_module_name()
     shutil.rmtree(deps_include_path)
     shutil.copytree(v8_include_path, deps_include_path, dirs_exist_ok=True)
+    copy_v8_licenses(deps_include_path)
     create_vendor_files(deps_include_path, module)

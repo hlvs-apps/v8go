@@ -12,9 +12,27 @@
 ## What this is
 
 `v8go` lets you execute JavaScript from Go using [V8](https://v8.dev), Google's
-JavaScript engine. Prebuilt static V8 libraries are shipped for Linux, macOS and
-Windows, so `go get` works out of the box — you should not need to build V8
+JavaScript engine. Prebuilt static V8 libraries are shipped for every supported
+platform, so `go get` works out of the box — you should not need to build V8
 yourself.
+
+## Supported platforms
+
+| OS | amd64 | arm64 | cgo C compiler |
+| --- | :---: | :---: | --- |
+| **Linux** | ✅ | ✅ | GCC or Clang |
+| **macOS** | ✅ | ✅ | Xcode Clang |
+| **Windows** | ✅ | 🚧 | **MinGW-w64 only, never MSVC** — see [Windows](#windows) |
+
+✅ — a prebuilt static V8 library is committed; nothing is needed at `go get` time
+beyond a working cgo C compiler.
+🚧 — the CI build is wired up but no library has been published yet.
+
+cgo is required, so `CGO_ENABLED=0` and cross-compiling without a C toolchain for
+the target are not supported.
+
+Windows needs a MinGW-w64 compiler specifically — **MSVC does not work**, because
+cgo has never supported it and no version of Go can link MSVC objects.
 
 ## What it is based on
 
@@ -256,20 +274,52 @@ Go Reference & more examples: https://pkg.go.dev/hlvs-apps/v8go
 
 ### Windows
 
-Windows (amd64) is supported via the **MinGW-w64** toolchain, which is what cgo
-links with on Windows. As with Linux and macOS, a prebuilt static library is
-included, so `go get` works out of the box — **but your build environment must
-use a MinGW-w64 GCC** (e.g. the `mingw-w64-x86_64-gcc` toolchain from
-[MSYS2](https://www.msys2.org/), or another mingw-w64 distribution) as cgo's C
-compiler. MSVC is not supported.
+Windows is supported via the **MinGW-w64** toolchain, which is what cgo links
+with on Windows. A prebuilt static library is included for amd64, so `go get`
+works out of the box — **but your build environment must use a MinGW-w64
+compiler** as cgo's CC.
 
-The V8 static library is built in CI (see the `windows` job in
+**MSVC is not supported, and cannot be.** cgo drives the C compiler with GCC
+semantics (GCC-style flags, and it parses the compiler's DWARF output to derive C
+type information); `cl.exe` provides neither. This is a Go limitation, not a
+choice made here — see [golang/go#20982](https://github.com/golang/go/issues/20982),
+open since 2017. Even Clang *targeting* MSVC is blocked, because cgo
+unconditionally passes the MinGW-only `-mthreads`
+([golang/go#80290](https://github.com/golang/go/issues/80290)).
+
+You do **not** need a full MSYS2 environment to *consume* this package — only a
+mingw-w64 compiler on `PATH`. Any of these work:
+
+- [MSYS2](https://www.msys2.org/) — `mingw-w64-x86_64-gcc` (amd64) or
+  `mingw-w64-clang-aarch64-clang` (arm64)
+- [w64devkit](https://github.com/skeeto/w64devkit) — a single zip, no environment
+- `zig cc` — `CC="zig cc -target x86_64-windows-gnu"`; Zig bundles the mingw-w64
+  headers and CRT
+
+MSYS2 is only required to *build V8 itself*.
+
+#### Windows on ARM
+
+The arm64 CI build is wired up (`build_windows_arm64` in
+`.github/workflows/v8_build.yml`) but has not yet published a library, so
+`windows/arm64` is not usable from `go get` today. It builds natively on GitHub's
+free `windows-11-arm` runners under MSYS2's **CLANGARM64** environment — there is
+no aarch64 GCC for mingw-w64 and the MinGW GN toolchain invokes a bare `clang`
+with no `--target`, so cross-compiling from x64 is not an option. Once the first
+build lands, `deps/update_cgo.py` generates the Go wiring automatically and the
+`deps/*` modules need re-pinning as described under
+[Upgrading the V8 binaries](#upgrading-the-v8-binaries).
+
+#### How the library is built
+
+The V8 static library is built in CI (the `build_windows*` jobs in
 `.github/workflows/v8_build.yml`) from the patches under
 [`patches/windows/`](patches/windows/), which are vendored from the
 actively-maintained [MSYS2 `mingw-w64-v8`](https://github.com/msys2/MINGW-packages/tree/master/mingw-w64-v8)
-package and track the same V8 version this project pins. `deps/build.py` applies
-them (see `apply_mingw_patches()`) on top of the `gclient`-fetched V8 tree when
-invoked with `--os windows`.
+package and track the same V8 version this project pins — including its arm64
+support. `deps/build.py` applies them (see `apply_mingw_patches()`) on top of the
+`gclient`-fetched V8 tree when invoked with `--os windows`. Those patches are
+BSD-3-Clause; see [`patches/windows/LICENSE`](patches/windows/LICENSE).
 
 > Historical note: Windows support was previously removed upstream in
 > [rogchap/v8go#234](https://github.com/rogchap/v8go/pull/234) and reintroduced
@@ -398,6 +448,27 @@ Go has `go fmt`, C has `clang-format`. Any changes to the `v8go.h|cc` should be 
 ---
 
 V8 Gopher image based on original artwork from the amazing [Renee French](http://reneefrench.blogspot.com).
+
+## License
+
+`v8go` is distributed under the BSD-3-Clause terms in [LICENSE](LICENSE).
+
+This repository also redistributes prebuilt static libraries of V8 under
+`deps/<os>_<arch>/` and vendors V8's public headers under `deps/include/`. Those
+artifacts carry code from V8 (BSD-3-Clause) and the third-party libraries V8
+bundles — Abseil (Apache-2.0), zlib, Highway, simdutf and others. Their notices
+are reproduced in [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md), and each
+`deps/<os>_<arch>/` module ships a `THIRD_PARTY_NOTICES` file generated by
+`deps/build.py` from the exact V8 tree that produced its binary.
+
+The Windows build patches under [`patches/windows/`](patches/windows/) come from
+the MSYS2 `mingw-w64-v8` package and are redistributed under its BSD-3-Clause
+license, reproduced at [`patches/windows/LICENSE`](patches/windows/LICENSE).
+
+No MinGW-w64 or GCC code is vendored here or present in the shipped archives. On
+Windows, `-static` links `libstdc++`/`libgcc` into *your* binary from *your* own
+toolchain; those carry the GCC Runtime Library Exception, which permits this
+without imposing GPL terms. Nothing in this distribution is copyleft-encumbered.
 
 ## Credits
 

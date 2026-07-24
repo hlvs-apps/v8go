@@ -227,9 +227,103 @@ jobs:
           !deps/windows_amd64/vendor.go
         retention-days: 2
 
+  build_windows_arm64:
+    name: Build V8 for windows arm64 (MinGW/CLANGARM64)
+    needs: build_common
+    # Windows-on-ARM runners are free for public repositories (GA 2025-08-07).
+    # The build must run natively: mingw-w64 has no aarch64 GCC cross-compiler,
+    # and the MinGW GN toolchain invokes a bare `clang`/`clang++` with no
+    # --target, so cross-compiling from x64 is not an option.
+    runs-on: windows-11-arm
+    defaults:
+      run:
+        shell: msys2 {0}
+    env:
+      DEPOT_TOOLS_WIN_TOOLCHAIN: '0'
+      GCLIENT_PY3: '1'
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+      CCACHE_MAXSIZE: '3G'
+      CCACHE_COMPILERCHECK: content
+    steps:
+    - name: Setup MSYS2 (CLANGARM64)
+      uses: msys2/setup-msys2@v2
+      with:
+        # CLANGARM64 is the only MinGW environment for aarch64; it is also what
+        # MSYS2's own mingw-w64-clang-aarch64-v8 package builds V8 with.
+        msystem: CLANGARM64
+        update: true
+        path-type: inherit
+        install: >-
+          git
+          patch
+          tar
+          python
+          mingw-w64-clang-aarch64-clang
+          mingw-w64-clang-aarch64-gn
+          mingw-w64-clang-aarch64-ninja
+          mingw-w64-clang-aarch64-python
+          mingw-w64-clang-aarch64-pkgconf
+          mingw-w64-clang-aarch64-ccache
+
+    - name: Checkout
+      uses: actions/checkout@v7
+      with:
+        submodules: true
+        fetch-depth: 1
+        ref: ${{ inputs.sha }}
+
+    - name: ccache
+      uses: actions/cache@v4
+      with:
+        path: ${{ github.workspace }}/.ccache
+        key: libv8:ccache:windows:arm64:${{ hashFiles('deps/v8_hash') }}:${{ github.run_id }}
+        restore-keys: |
+          libv8:ccache:windows:arm64:${{ hashFiles('deps/v8_hash') }}:
+          libv8:ccache:windows:arm64:
+
+    - name: Fresh depot_tools
+      run: |
+        rm -rf deps/depot_tools
+        git clone https://chromium.googlesource.com/chromium/tools/depot_tools.git deps/depot_tools
+
+    - name: Update to latest V8
+      run: |
+        latest_v8_hash="${{ needs.build_common.outputs.v8_hash }}"
+        cd deps/v8
+        git fetch --depth=1 origin "$latest_v8_hash"
+        git checkout "$latest_v8_hash"
+
+    - name: Apply Patches
+      run: |
+        if [ -d patches ]; then
+          for f in patches/*.patch; do
+            echo "Apply $f"
+            patch -p1 -i "$f"
+          done
+        fi
+
+    - name: Update depot_tools fetch config
+      run: cd deps/depot_tools && git config --unset-all remote.origin.fetch; git config --add remote.origin.fetch +refs/heads/*:refs/remotes/origin/*
+
+    - name: Build V8 (windows arm64)
+      # --clang is the default for windows/arm64 in build.py, but state it
+      # explicitly: there is no GCC fallback on this target.
+      run: cd deps && ./build.py --ccache --clang --arch arm64 --os windows
+
+    - name: Upload Artifacts
+      uses: actions/upload-artifact@v7
+      with:
+        # The name matches the directory under deps/.
+        name: windows_arm64
+        if-no-files-found: error
+        path: |
+          deps/windows_arm64/
+          !deps/windows_arm64/vendor.go
+        retention-days: 2
+
   commit:
     name: Commit Built Artifacts
-    needs: [build, build_windows, build_common]
+    needs: [build, build_windows, build_windows_arm64, build_common]
     runs-on: ubuntu-latest
     # create-pull-request needs to push a branch and open a PR. On a fork the
     # default GITHUB_TOKEN is read-only unless we request these scopes (and the

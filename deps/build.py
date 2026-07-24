@@ -53,8 +53,13 @@ is_windows = platform.system().lower() == "windows"
 # so the MinGW patch/toolchain logic is explicit; on our CI this coincides with
 # `is_windows` because we build the Windows library natively under MSYS2.
 is_windows_build = args.os == "windows"
-# MinGW builds default to GCC. `--clang` still forces Clang (MSYS2 CLANG64).
-is_clang = args.clang if args.clang is not None else (not is_windows_build)
+# Windows arm64 has no GCC option: mingw-w64 ships no aarch64 GCC target, so the
+# only MinGW toolchain there is MSYS2's CLANGARM64 (clang). Everything else
+# defaults as before -- MinGW x64 to GCC (MINGW64), non-Windows to Clang. An
+# explicit `--clang`/`--no-clang` still wins.
+is_windows_arm64 = is_windows_build and args.arch == "arm64"
+is_clang = args.clang if args.clang is not None else (
+    not is_windows_build or is_windows_arm64)
 
 def get_custom_deps():
     # These deps are unnecessary for building.
@@ -131,7 +136,6 @@ use_siso=false
 enable_rust=false
 enable_iterator_debugging=false
 chrome_pgo_phase=0
-win_enable_cfg_guards=true
 v8_symbol_level=0
 v8_enable_partition_alloc=false
 v8_enable_verify_heap=false
@@ -192,6 +196,10 @@ def build_gn_args():
         gnargs += 'arm_control_flow_integrity="none"\n'
     if is_windows_build:
         gnargs += WINDOWS_GN_ARGS
+        # Control Flow Guard is enabled for MinGW x64 but must stay off on
+        # arm64, matching the MSYS2 mingw-w64-v8 package (its PKGBUILD sets
+        # `_cfg=false` when CARCH is aarch64).
+        gnargs += 'win_enable_cfg_guards=%s\n' % str(arch != "arm64").lower()
 
     return gnargs
 
@@ -329,6 +337,122 @@ def patch_absl_inline_namespace():
 def update_last_change():
     out_path = os.path.join(v8_path, "build", "util", "LASTCHANGE")
     subprocess_check_call(["python", "build/util/lastchange.py", "-o", out_path], cwd=v8_path)
+
+
+# File names that hold a license/copyright notice. V8 and its gclient-fetched
+# dependencies are not consistent about which they use: LICENSE, LICENCE,
+# COPYING, NOTICE, LICENSE.txt, LICENSE-APACHE, LICENSE.fdlibm, ...
+LICENSE_FILE_RE = re.compile(
+    r"^(license|licence|copying|copyright|notice)([._-].*)?$", re.IGNORECASE)
+
+# ...but the pattern above also matches source files such as `license.cc` or
+# `licenses.py` (V8 and Chromium both have them), which are code, not notices.
+# Reject anything carrying a known code/data extension.
+NON_LICENSE_EXTS = frozenset([
+    ".a", ".bat", ".bzl", ".c", ".cc", ".cfg", ".cmake", ".conf", ".cpp", ".cs",
+    ".css", ".dll", ".exe", ".go", ".gn", ".gni", ".gyp", ".gypi", ".h", ".hpp",
+    ".html", ".in", ".ini", ".java", ".js", ".json", ".m", ".mm", ".o", ".pl",
+    ".ps1", ".py", ".pyc", ".rs", ".s", ".sh", ".so", ".toml", ".ts", ".xml",
+    ".yaml", ".yml",
+])
+
+# Pruned while walking: version control, build output, and this script's own
+# staging dirs. None of them hold a license text that isn't also present at its
+# source location.
+NOTICE_PRUNE_DIRS = frozenset([".git", ".build", "out", "obj"])
+
+THIRD_PARTY_NOTICES_HEADER = """\
+THIRD-PARTY NOTICES for the prebuilt V8 library in this directory
+================================================================
+
+The static library in this directory (libv8-*.a) was compiled from V8 at commit
+
+    %s
+
+It contains code from V8 and from the third-party libraries that V8 bundles.
+Reproduced below are the license texts and copyright notices found in that exact
+source tree, which the terms of those licenses require to accompany a binary
+redistribution.
+
+This listing is generated mechanically by deps/build.py at build time (see
+write_third_party_notices()) by harvesting every license file from the synced V8
+checkout. It is deliberately a SUPERSET: no attempt is made to determine which
+components the linker actually pulled in, because over-attribution is harmless
+whereas under-attribution is not. Some entries below therefore cover build
+tooling or test-only dependencies that are not part of the library.
+
+v8go's own license is BSD-3-Clause and is not reproduced here; see the LICENSE
+file at the root of the v8go repository, alongside THIRD_PARTY_LICENSES.md for a
+human-readable summary of the principal components.
+
+%d license files follow, sorted by path relative to the V8 checkout root.
+"""
+
+
+def collect_license_files(root):
+    """Returns a sorted [(relpath, text)] of every license file under root."""
+    found = []
+    for dirpath, dirnames, filenames in os.walk(root):
+        # Prune in place so os.walk doesn't descend into them.
+        dirnames[:] = sorted(d for d in dirnames if d not in NOTICE_PRUNE_DIRS)
+        for filename in sorted(filenames):
+            if not LICENSE_FILE_RE.match(filename):
+                continue
+            if os.path.splitext(filename)[1].lower() in NON_LICENSE_EXTS:
+                continue
+            full_path = os.path.join(dirpath, filename)
+            if os.path.islink(full_path) or not os.path.isfile(full_path):
+                continue
+            # Guard against a stray large file matching the name pattern; real
+            # license texts are a few KiB at most.
+            if os.path.getsize(full_path) > 512 * 1024:
+                continue
+            try:
+                with open(full_path, "rt", encoding="utf-8", errors="replace") as f:
+                    text = f.read()
+            except OSError as e:
+                print("%s: skipping %s: %s" % (sys.argv[0], full_path, e),
+                      file=sys.stderr)
+                continue
+            rel = os.path.relpath(full_path, root).replace(os.sep, "/")
+            found.append((rel, text))
+    found.sort(key=lambda item: item[0])
+    return found
+
+
+def write_third_party_notices(dest_path):
+    """Writes dest_path/THIRD_PARTY_NOTICES harvested from the V8 checkout.
+
+    Attribution has to be regenerated per build rather than committed by hand:
+    the CI job that lands new binaries deletes deps/<os>_<arch>/ wholesale before
+    unpacking the build artifact (see "Remove old static libraries" in
+    .github/workflows/v8_build.yml), so anything not produced by the build is
+    lost. Generating it here also keeps the notices pinned to the same V8 tree
+    that produced the archive, and each deps/<os>_<arch>/ is its own Go module,
+    so the file travels with the module when consumed standalone.
+    """
+    with open(os.path.join(deps_path, "v8_hash"), "rt") as f:
+        v8_hash = f.read().strip()
+
+    licenses = collect_license_files(v8_path)
+    if not licenses:
+        raise AssertionError(
+            "no license files found under %s; refusing to ship binaries "
+            "without third-party attribution" % v8_path)
+
+    out_fn = os.path.join(dest_path, "THIRD_PARTY_NOTICES")
+    with open(out_fn, "wt", encoding="utf-8", newline="\n") as f:
+        f.write(THIRD_PARTY_NOTICES_HEADER % (v8_hash, len(licenses)))
+        for rel, text in licenses:
+            f.write("\n\n")
+            f.write("=" * 80 + "\n")
+            f.write("%s\n" % rel)
+            f.write("=" * 80 + "\n\n")
+            f.write(text if text.endswith("\n") else text + "\n")
+
+    print("%s: wrote %s (%d license files)" % (sys.argv[0], out_fn, len(licenses)),
+          file=sys.stderr)
+
 
 def split_ar(src_fn, dest_fn, dest_obj_dn):
     """Extracts all files from src_fn to dest_obj_dn/ and makes a thin archive at dest_fn.
@@ -514,6 +638,8 @@ def main():
     finally:
         if os.path.exists(dest_obj_dn):
             shutil.rmtree(dest_obj_dn)
+
+    write_third_party_notices(dest_path)
 
 if __name__ == "__main__":
     main()
