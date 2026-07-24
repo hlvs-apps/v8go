@@ -9,6 +9,45 @@
 
 <img src="gopher.jpg" width="200px" alt="V8 Gopher based on original artwork from the amazing Renee French" />
 
+## What this is
+
+`v8go` lets you execute JavaScript from Go using [V8](https://v8.dev), Google's
+JavaScript engine. Prebuilt static V8 libraries are shipped for Linux, macOS and
+Windows, so `go get` works out of the box — you should not need to build V8
+yourself.
+
+## What it is based on
+
+This repository is a continuation of the original
+[rogchap/v8go](https://github.com/rogchap/v8go), created by
+[Roger Chapman](https://github.com/rogchap) and the v8go contributors. Upstream
+has been dormant since April 2023. The project was carried forward by
+[Sebastian Döll](https://github.com/katallaxie) at
+[katallaxie/v8go](https://github.com/katallaxie/v8go), and this repository
+continues from there.
+
+Most of the code here is upstream's work. It is distributed under the
+BSD-3-Clause terms in [LICENSE](LICENSE), Copyright (c) 2019 Roger Chapman and
+the v8go contributors.
+
+The git history is rooted on rogchap's original commits — they keep their
+original hashes and PGP signatures, so they can be verified against upstream —
+rather than being collapsed into a single initial commit. `git log` therefore
+shows the full lineage of the project.
+
+### What this repository adds
+
+- **Current V8.** Tracks recent V8 releases (currently 14.6.202.28) with
+  binaries built in CI, rather than the 11.x series upstream stopped at.
+- **Windows (amd64) support** via the MinGW-w64 toolchain — see
+  [Windows](#windows).
+- **`Value.ArrayBufferViewBytes() []byte`** — copies the bytes of any
+  `ArrayBufferView` (typed array or `DataView`) into a Go-owned slice with a
+  single memcpy, respecting `byteOffset`/`byteLength`.
+- **Abseil isolation.** V8's bundled Abseil is rebuilt into the `absl::v8go`
+  inline namespace, so it cannot collide at link time with another copy of
+  Abseil in your binary.
+
 ## Usage
 
 ```go
@@ -239,7 +278,7 @@ The V8 static library is built in CI (see the `windows` job in
 `.github/workflows/v8_build.yml`) from the patches under
 [`patches/windows/`](patches/windows/), which are vendored from the
 actively-maintained [MSYS2 `mingw-w64-v8`](https://github.com/msys2/MINGW-packages/tree/master/mingw-w64-v8)
-package and track the same V8 version this fork pins. `deps/build.py` applies
+package and track the same V8 version this project pins. `deps/build.py` applies
 them (see `apply_mingw_patches()`) on top of the `gclient`-fetched V8 tree when
 invoked with `--os windows`.
 
@@ -279,10 +318,10 @@ This project also aims to keep up-to-date with the latest (stable) release of V8
 
 ### Upgrading the V8 binaries
 
-We have the [upgradev8](https://github.com/hlvs-apps/v8go/.github/workflow/v8upgrade.yml) workflow.
+We have the [v8_upgrade](.github/workflows/v8_upgrade.yml) workflow.
 The workflow is triggered every day or manually.
 
-If the current [v8_version](https://github.com/hlvs-apps/v8go/deps/v8_version) is different from the latest stable version, the workflow takes care of fetching the latest stable v8 files and copying them into `deps/include`. The last step of the workflow opens a new PR with the branch name `v8_upgrade/<v8-version>` with all the changes.
+If the current [v8_hash](deps/v8_hash) is different from the latest stable version, the workflow takes care of fetching the latest stable v8 files and copying them into `deps/include`. The last step of the workflow opens a new PR with the branch name `v8_upgrade/<v8-version>` with all the changes.
 
 The next steps are:
 
@@ -290,7 +329,7 @@ The next steps are:
 Build](https://github.com/hlvs-apps/v8go/actions?query=workflow%3A%22V8+Build%22) Github Action, Select "Run workflow",
 and select your pushed branch eg. `v8_upgrade/<v8-version>`.
 1) Once built, this should open 3 PRs against your branch to add the `libv8.a` for Linux (for x86_64) and macOS for x86_64 and arm64; merge
-these PRs into your branch. You are now ready to raise the PR against `master` with the latest version of V8.
+these PRs into your branch. You are now ready to raise the PR against `main` with the latest version of V8.
 
 ### Flushing after C/C++ standard library printing for debugging
 
@@ -347,6 +386,10 @@ Go has `go fmt`, C has `clang-format`. Any changes to the `v8go.h|cc` should be 
 
 V8 Gopher image based on original artwork from the amazing [Renee French](http://reneefrench.blogspot.com).
 
-## License
+## Credits
 
-[Apache 2.0](/LICENSE)
+`v8go` was created by [Roger Chapman](https://github.com/rogchap) and the v8go
+contributors at [rogchap/v8go](https://github.com/rogchap/v8go), and carried
+forward by [Sebastian Döll](https://github.com/katallaxie) at
+[katallaxie/v8go](https://github.com/katallaxie/v8go). See [LICENSE](LICENSE)
+for the terms this project is distributed under.
