@@ -359,9 +359,12 @@ def split_ar(src_fn, dest_fn, dest_obj_dn):
         cwd=v8_path)
     ar_files = ar_files.splitlines()
 
-    # llvm-ar (--clang) for Darwin (but not Android) seems to mangle
-    # the names to lowercase on extraction, while others do not.
-    case_sensitive = args.os != "darwin"
+    # Treat case-insensitive filesystems (macOS and Windows) as non-case-
+    # sensitive so members that differ only in case aren't extracted into the
+    # same pass and clobber each other on disk (e.g. the inspector's Runtime.o
+    # vs V8's runtime.o). On Darwin, llvm-ar (--clang) additionally lowercases
+    # names on extraction; either way the lowercased canonical name is correct.
+    case_sensitive = args.os not in ("darwin", "windows")
 
     # Extracting files one-by-one is slow, so let's group them into
     # disjoint sets and use "ar N"... Complicated by the occasional

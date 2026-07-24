@@ -38,6 +38,12 @@ jobs:
       # Use a local (MinGW) toolchain instead of letting gclient/gn pull MSVC.
       DEPOT_TOOLS_WIN_TOOLCHAIN: '0'
       GCLIENT_PY3: '1'
+      # ccache so each iteration reuses the previous compile (~2h -> minutes).
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+      CCACHE_MAXSIZE: '3G'
+      # Hash compiler contents (not path/mtime): MSYS2's install path can move
+      # between runs, and we don't want that to invalidate the whole cache.
+      CCACHE_COMPILERCHECK: content
     steps:
     - name: Setup MSYS2 (MinGW64)
       uses: msys2/setup-msys2@v2
@@ -57,12 +63,24 @@ jobs:
           mingw-w64-x86_64-ninja
           mingw-w64-x86_64-python
           mingw-w64-x86_64-pkgconf
+          mingw-w64-x86_64-ccache
 
     - name: Checkout
       uses: actions/checkout@v7
       with:
         submodules: true
         fetch-depth: 1
+
+    - name: ccache
+      # run_id in the key => a fresh cache is saved every run; restore-keys fall
+      # back to the most recent cache for this V8 version so compiles are reused.
+      uses: actions/cache@v4
+      with:
+        path: ${{ github.workspace }}/.ccache
+        key: libv8:ccache:windows:amd64:${{ hashFiles('deps/v8_hash') }}:${{ github.run_id }}
+        restore-keys: |
+          libv8:ccache:windows:amd64:${{ hashFiles('deps/v8_hash') }}:
+          libv8:ccache:windows:amd64:
 
     - name: Fresh depot_tools
       # The submodule checkout is a shallow, detached clone, which depot_tools
@@ -101,7 +119,11 @@ jobs:
       run: cd deps/depot_tools && git config --unset-all remote.origin.fetch; git config --add remote.origin.fetch +refs/heads/*:refs/remotes/origin/*
 
     - name: Build V8 (windows/amd64, MinGW)
-      run: cd deps && ./build.py --verbose --arch amd64 --os windows
+      run: cd deps && ./build.py --verbose --ccache --arch amd64 --os windows
+
+    - name: ccache stats
+      if: always()
+      run: ccache -s || true
 
     - name: Upload libv8 artifact
       if: success()
