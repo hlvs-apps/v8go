@@ -56,3 +56,38 @@ jobs:
       with:
         name: Test Reports ${{ matrix.os }} ${{ matrix.arch }} Go ${{ matrix.go-version }}
         path: .test/reports/**
+
+  # Windows links cgo with MinGW-w64 (not MSVC), so it needs the MSYS2 toolchain
+  # rather than the plain make-test matrix above. This is a lighter smoke test
+  # (no -race/gotestsum) that exercises the committed Windows lib end-to-end.
+  test_windows:
+    name: Tests on windows amd64 (MinGW)
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+    - name: Setup MSYS2 (MinGW64)
+      uses: msys2/setup-msys2@v2
+      with:
+        msystem: MINGW64
+        update: true
+        path-type: inherit
+        install: >-
+          mingw-w64-x86_64-gcc
+          mingw-w64-x86_64-pkgconf
+
+    - uses: actions/checkout@v7
+      with:
+        ref: ${{ inputs.sha }}
+
+    - uses: actions/setup-go@v6
+      with:
+        go-version-file: ./go.mod
+
+    - name: go build & test
+      env:
+        CGO_ENABLED: '1'
+      run: |
+        go build -v .
+        go test -short -count=1 -v .

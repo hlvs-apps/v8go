@@ -137,9 +137,99 @@ jobs:
           !deps/${{ matrix.os }}_${{ matrix.arch }}/vendor.go
         retention-days: 2
 
+  build_windows:
+    name: Build V8 for windows amd64 (MinGW)
+    needs: build_common
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: msys2 {0}
+    env:
+      # Build with the MinGW-w64 toolchain instead of MSVC (which cgo can't link).
+      DEPOT_TOOLS_WIN_TOOLCHAIN: '0'
+      GCLIENT_PY3: '1'
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+      CCACHE_MAXSIZE: '3G'
+      CCACHE_COMPILERCHECK: content
+    steps:
+    - name: Setup MSYS2 (MinGW64)
+      uses: msys2/setup-msys2@v2
+      with:
+        msystem: MINGW64
+        update: true
+        # Inherit the runner PATH so depot_tools' bootstrap can find Git.
+        path-type: inherit
+        install: >-
+          git
+          patch
+          tar
+          python
+          mingw-w64-x86_64-gcc
+          mingw-w64-x86_64-gn
+          mingw-w64-x86_64-ninja
+          mingw-w64-x86_64-python
+          mingw-w64-x86_64-pkgconf
+          mingw-w64-x86_64-ccache
+
+    - name: Checkout
+      uses: actions/checkout@v7
+      with:
+        submodules: true
+        fetch-depth: 1
+        ref: ${{ inputs.sha }}
+
+    - name: ccache
+      uses: actions/cache@v4
+      with:
+        path: ${{ github.workspace }}/.ccache
+        key: libv8:ccache:windows:amd64:${{ hashFiles('deps/v8_hash') }}:${{ github.run_id }}
+        restore-keys: |
+          libv8:ccache:windows:amd64:${{ hashFiles('deps/v8_hash') }}:
+          libv8:ccache:windows:amd64:
+
+    - name: Fresh depot_tools
+      # The submodule checkout is a shallow, detached clone depot_tools can't
+      # self-update; replace it with a normal clone so its bootstrap works.
+      run: |
+        rm -rf deps/depot_tools
+        git clone https://chromium.googlesource.com/chromium/tools/depot_tools.git deps/depot_tools
+
+    - name: Update to latest V8
+      run: |
+        latest_v8_hash="${{ needs.build_common.outputs.v8_hash }}"
+        cd deps/v8
+        git fetch --depth=1 origin "$latest_v8_hash"
+        git checkout "$latest_v8_hash"
+
+    - name: Apply Patches
+      run: |
+        if [ -d patches ]; then
+          for f in patches/*.patch; do
+            echo "Apply $f"
+            patch -p1 -i "$f"
+          done
+        fi
+
+    - name: Update depot_tools fetch config
+      run: cd deps/depot_tools && git config --unset-all remote.origin.fetch; git config --add remote.origin.fetch +refs/heads/*:refs/remotes/origin/*
+
+    - name: Build V8 (windows)
+      run: cd deps && ./build.py --ccache --arch amd64 --os windows
+
+    - name: Upload Artifacts
+      uses: actions/upload-artifact@v7
+      with:
+        # The name matches the directory under deps/.
+        name: windows_amd64
+        if-no-files-found: error
+        path: |
+          deps/windows_amd64/
+          !deps/windows_amd64/vendor.go
+        retention-days: 2
+
   commit:
     name: Commit Built Artifacts
-    needs: [build, build_common]
+    needs: [build, build_windows, build_common]
     runs-on: ubuntu-latest
     # create-pull-request needs to push a branch and open a PR. On a fork the
     # default GITHUB_TOKEN is read-only unless we request these scopes (and the

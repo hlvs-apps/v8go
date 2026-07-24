@@ -6,4 +6,5 @@ use (
 	./deps/darwin_arm64
 	./deps/linux_amd64
 	./deps/linux_arm64
+	./deps/windows_amd64
 )

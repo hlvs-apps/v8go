@@ -228,26 +228,31 @@ please join the [**#v8go**](https://gophers.slack.com/channels/v8go) channel on 
 
 ### Windows
 
-Windows support is being reintroduced via the **MinGW-w64** toolchain (the one
-cgo links with on Windows). The V8 static library is built in CI from the
-patches under [`patches/windows/`](patches/windows/), which are vendored from the
+Windows (amd64) is supported via the **MinGW-w64** toolchain, which is what cgo
+links with on Windows. As with Linux and macOS, a prebuilt static library is
+included, so `go get` works out of the box — **but your build environment must
+use a MinGW-w64 GCC** (e.g. the `mingw-w64-x86_64-gcc` toolchain from
+[MSYS2](https://www.msys2.org/), or another mingw-w64 distribution) as cgo's C
+compiler. MSVC is not supported.
+
+The V8 static library is built in CI (see the `windows` job in
+`.github/workflows/v8_build.yml`) from the patches under
+[`patches/windows/`](patches/windows/), which are vendored from the
 actively-maintained [MSYS2 `mingw-w64-v8`](https://github.com/msys2/MINGW-packages/tree/master/mingw-w64-v8)
 package and track the same V8 version this fork pins. `deps/build.py` applies
 them (see `apply_mingw_patches()`) on top of the `gclient`-fetched V8 tree when
 invoked with `--os windows`.
 
-This is still being brought up in CI (`.github/workflows/v8_build_windows.yml`);
-until it lands in the main build + test matrices, treat Windows as experimental.
-
 > Historical note: Windows support was previously removed upstream in
-> [rogchap/v8go#234](https://github.com/rogchap/v8go/pull/234).
+> [rogchap/v8go#234](https://github.com/rogchap/v8go/pull/234) and reintroduced
+> here on the MinGW-w64 toolchain.
 
 ## V8 dependency
 
 V8 version: **14.6.202.28** (March 2026)
 
 In order to make `v8go` usable as a standard Go package, prebuilt static libraries of V8
-are included for Linux and macOS. you *should not* require to build V8 yourself.
+are included for Linux, macOS and Windows. you *should not* require to build V8 yourself.
 
 Due to security concerns of binary blobs hiding malicious code, the V8 binary is built via CI *ONLY*.
 

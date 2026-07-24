@@ -488,7 +488,20 @@ def main():
 
     gnargs = build_gn_args()
 
-    subprocess_check_call([gn_path, "gen", build_path, "--args=" + gnargs.replace('\n', ' ')], cwd=v8_path)
+    # gn gen occasionally aborts with an internal assertion
+    # (ninja_target_writer.cc "Check failed: files.empty()") that a fresh retry
+    # clears. Regenerate from a clean build dir a couple of times before failing.
+    for attempt in range(3):
+        if os.path.exists(build_path):
+            shutil.rmtree(build_path)
+        try:
+            subprocess_check_call([gn_path, "gen", build_path, "--args=" + gnargs.replace('\n', ' ')], cwd=v8_path)
+            break
+        except subprocess.CalledProcessError:
+            if attempt == 2:
+                raise
+            print("%s: gn gen failed (attempt %d/3), retrying..." % (sys.argv[0], attempt + 1), file=sys.stderr)
+
     subprocess_check_call([ninja_path, "-j", str(os.cpu_count()), "-C", build_path, "v8_monolith"], cwd=v8_path)
 
     dest_path = os.path.join(deps_path, os_arch())
