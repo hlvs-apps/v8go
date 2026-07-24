@@ -20,6 +20,13 @@ on:
     - deps/update_cgo.py
     - patches/windows/**
     - .github/workflows/v8_build_windows.yml
+    # cgo sources, so the test job re-runs on Go/C changes (the build reuses
+    # ccache, so this stays cheap).
+    - '**/*.go'
+    - '**/*.h'
+    - '**/*.cc'
+    - go.mod
+    - go.work
   workflow_dispatch:
     inputs:
       v8_hash:
