@@ -235,6 +235,10 @@ jobs:
     # and the MinGW GN toolchain invokes a bare `clang`/`clang++` with no
     # --target, so cross-compiling from x64 is not an option.
     runs-on: windows-11-arm
+    # windows/arm64 is not wired into go.mod yet, so a failure here breaks no
+    # consumer. Without this, a failing arm64 job skips the commit job and
+    # discards the five platform builds that did succeed.
+    continue-on-error: true
     defaults:
       run:
         shell: msys2 {0}

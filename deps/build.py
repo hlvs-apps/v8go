@@ -454,6 +454,24 @@ def write_third_party_notices(dest_path):
           file=sys.stderr)
 
 
+def ar_is_llvm(ar_path):
+    """Whether `ar_path` is llvm-ar rather than GNU binutils ar.
+
+    The two disagree about how `ar xN` resolves a member name, which matters on
+    Windows: whichever `ar` is first on PATH depends on the MSYS2 environment
+    (MINGW64 gives binutils, CLANGARM64 gives llvm-ar). Probe rather than infer
+    it from --clang, since the toolchain and the archiver are chosen separately.
+    """
+    try:
+        version = subprocess_check_output_text(
+            [ar_path, "--version"], stderr=subprocess.DEVNULL)
+    except (OSError, subprocess.CalledProcessError):
+        # Some ar implementations (Apple's, old binutils) reject --version and
+        # dump a usage message. None of those are llvm-ar.
+        return False
+    return "LLVM" in version
+
+
 def split_ar(src_fn, dest_fn, dest_obj_dn):
     """Extracts all files from src_fn to dest_obj_dn/ and makes a thin archive at dest_fn.
 
@@ -483,15 +501,23 @@ def split_ar(src_fn, dest_fn, dest_obj_dn):
         cwd=v8_path)
     ar_files = ar_files.splitlines()
 
-    # mingw's binutils "ar" matches member names case-insensitively (like
-    # Darwin's llvm-ar), but unlike llvm-ar its "ar t" prints the original case.
-    # Lowercase the listing ourselves so the occurrence indices we feed to
-    # "ar xN" match how extraction actually resolves members that differ only in
-    # case (e.g. the inspector's Runtime.o vs V8's runtime.o): as two occurrences
-    # of "runtime.o", extracted with N=1 and N=2. Without this, both are counted
-    # separately, each extracted with N=1 -> "ar" returns the same first match
-    # twice and the second member's symbols end up undefined at link time.
-    if args.os == "windows":
+    # mingw's binutils "ar" matches member names case-insensitively, but unlike
+    # llvm-ar its "ar t" prints the original case. Lowercase the listing
+    # ourselves so the occurrence indices we feed to "ar xN" match how extraction
+    # actually resolves members that differ only in case (e.g. the inspector's
+    # Runtime.o vs V8's runtime.o): as two occurrences of "runtime.o", extracted
+    # with N=1 and N=2. Without this, both are counted separately, each extracted
+    # with N=1 -> "ar" returns the same first match twice and the second member's
+    # symbols end up undefined at link time.
+    #
+    # This is wrong for llvm-ar, which matches case-sensitively on every host:
+    # there Runtime.o and runtime.o are two distinct members with one occurrence
+    # each, so folding them into one name and asking for occurrence 2 fails with
+    # "'runtime.o' was not found". Keep the original case for llvm-ar and let
+    # allocate_disjoint_files() (which counts per exact name, but canonicalises
+    # case-insensitively when picking each round) place the two in separate
+    # extraction batches -- the same arrangement Darwin has always used.
+    if args.os == "windows" and not ar_is_llvm(ar_path):
         ar_files = [ar_file.lower() for ar_file in ar_files]
 
     # llvm-ar (--clang) on Darwin lowercases names on extraction, and both Darwin
