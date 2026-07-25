@@ -407,6 +407,20 @@ jobs:
     - name: Create PR
       uses: peter-evans/create-pull-request@v8
       with:
+        # A full V8 build takes hours, and this job checks out the commit the run
+        # was dispatched at -- so the target branch has usually moved on by the
+        # time we get here. Without an explicit `base`, the action builds the PR
+        # branch from that stale checkout, and every file changed on the branch
+        # meanwhile shows up in the PR as a revert. Changes under
+        # .github/workflows/ then fail the push outright ("refusing to allow a
+        # GitHub App to create or update workflow ... without `workflows`
+        # permission", which no `permissions:` block can grant); everything else
+        # would be reverted silently, which is worse.
+        #
+        # Supplying `base` makes the action rebase the artifact changes onto the
+        # branch tip instead. ref_name rather than a hard-coded "main" so that
+        # dispatching on a v8_upgrade/<version> branch still opens the PR there.
+        base: ${{ github.ref_name }}
         commit-message: ${{steps.pr_metadata.outputs.pr_commit_message}}
         branch: ${{steps.pr_metadata.outputs.pr_branch}}
         delete-branch: true
