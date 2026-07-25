@@ -80,6 +80,12 @@ jobs:
         - os: darwin
           platform: macos-latest
     runs-on: ${{ matrix.platform }}
+    env:
+      # V8's toolchain is re-downloaded by the gclient hooks on every run, so the
+      # compiler binary's mtime is never stable. ccache's default compilercheck
+      # is `mtime`, which would treat every object as a miss; hash the compiler
+      # contents instead. The Windows jobs have always done this.
+      CCACHE_COMPILERCHECK: content
     steps:
     - name: Install g++-aarch64-linux-gnu
       if: matrix.os == 'linux' && matrix.arch == 'arm64'
@@ -102,7 +108,19 @@ jobs:
     - name: ccache
       uses: hendrikmuhs/ccache-action@v1.2
       with:
-        key: libv8:ccache:${{ matrix.os }}:${{ matrix.arch }}:${{ hashFiles('deps/v8_hash') }}:${{ runner.os }}
+        # No V8 hash in the key. ccache is content-addressed -- it hashes the
+        # preprocessed source and the compiler, so a cache carried across a V8
+        # bump can never produce a wrong object, it just misses on the files
+        # that actually changed. Keying the blob by V8 version threw away a
+        # mostly-valid cache on every upgrade and forced a ~2h cold build.
+        # The action appends a timestamp and restores by prefix, so this always
+        # warm-starts from that platform's most recent cache.
+        key: libv8:ccache:${{ matrix.os }}:${{ matrix.arch }}
+        # 500MB (the action's default) cannot hold a V8 build: ~1700 objects,
+        # roughly 1.7GB before compression. Most of the cache was being evicted
+        # mid-build, which is why linux saw no speedup at all while the Windows
+        # jobs -- already at 3G -- went from 134m to 7m.
+        max-size: 2G
 
     - name: Update to latest V8
       run: |
@@ -182,9 +200,11 @@ jobs:
       uses: actions/cache@v4
       with:
         path: ${{ github.workspace }}/.ccache
-        key: libv8:ccache:windows:amd64:${{ hashFiles('deps/v8_hash') }}:${{ github.run_id }}
+        # run_id only makes the save key unique; restore always falls back to
+        # the platform prefix. See the linux/darwin ccache step for why the V8
+        # hash is deliberately absent from the key.
+        key: libv8:ccache:windows:amd64:${{ github.run_id }}
         restore-keys: |
-          libv8:ccache:windows:amd64:${{ hashFiles('deps/v8_hash') }}:
           libv8:ccache:windows:amd64:
 
     - name: Fresh depot_tools
@@ -280,9 +300,8 @@ jobs:
       uses: actions/cache@v4
       with:
         path: ${{ github.workspace }}/.ccache
-        key: libv8:ccache:windows:arm64:${{ hashFiles('deps/v8_hash') }}:${{ github.run_id }}
+        key: libv8:ccache:windows:arm64:${{ github.run_id }}
         restore-keys: |
-          libv8:ccache:windows:arm64:${{ hashFiles('deps/v8_hash') }}:
           libv8:ccache:windows:arm64:
 
     - name: Fresh depot_tools

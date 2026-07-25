@@ -300,15 +300,25 @@ MSYS2 is only required to *build V8 itself*.
 
 #### Windows on ARM
 
-The arm64 CI build is wired up (`build_windows_arm64` in
-`.github/workflows/v8_build.yml`) but has not yet published a library, so
-`windows/arm64` is not usable from `go get` today. It builds natively on GitHub's
-free `windows-11-arm` runners under MSYS2's **CLANGARM64** environment — there is
-no aarch64 GCC for mingw-w64 and the MinGW GN toolchain invokes a bare `clang`
-with no `--target`, so cross-compiling from x64 is not an option. Once the first
-build lands, `deps/update_cgo.py` generates the Go wiring automatically and the
-`deps/*` modules need re-pinning as described under
+The arm64 CI build (`build_windows_arm64` in
+`.github/workflows/v8_build.yml`) **builds green**, but no library has been
+published yet, so `windows/arm64` is not usable from `go get` today. Once the
+artifact is committed, `deps/update_cgo.py` generates the Go wiring automatically
+and the `deps/*` modules need re-pinning as described under
 [Upgrading the V8 binaries](#upgrading-the-v8-binaries).
+
+It builds natively on GitHub's free `windows-11-arm` runners under MSYS2's
+**CLANGARM64** environment. Cross-compiling from x64 is not an option: mingw-w64
+ships no aarch64 GCC, and the MinGW GN toolchain invokes a bare `clang` with no
+`--target`.
+
+One consequence of CLANGARM64 worth knowing if you touch `deps/build.py`: its
+`ar` is **llvm-ar**, not binutils. The two disagree about `ar xN`. binutils on
+Windows matches member names case-insensitively, so V8's `runtime.o` and the
+inspector's `Runtime.o` resolve as two occurrences of one name; llvm-ar matches
+case-sensitively, making them distinct members with one occurrence each.
+`split_ar()` probes with `ar --version` and adjusts, because getting this wrong
+fails only at the very end of an hour-long build.
 
 #### How the library is built
 
@@ -393,6 +403,33 @@ a platform. Verify from outside the repo before releasing:
     ```
 
 You are now ready to raise the PR against `main` with the latest version of V8.
+
+### CI build caching
+
+Every platform in the [V8 Build](.github/workflows/v8_build.yml) workflow compiles
+through **ccache**, restored from the GitHub Actions cache. A cold V8 build takes
+40 minutes to over two hours per platform; a warm one is typically under ten.
+
+Two details matter if you touch the cache configuration:
+
+- **The cache key must not include the V8 version.** ccache is content-addressed
+  — it hashes the preprocessed source together with the compiler, so a cache
+  carried across a V8 bump cannot produce a stale object; it simply misses on the
+  files that actually changed. Keying the cache blob by `deps/v8_hash` discards a
+  mostly-valid cache on every upgrade, which is exactly when you least want a
+  two-hour rebuild.
+- **The size limit must fit a whole V8 build.** V8 compiles roughly 1,700 objects,
+  well over a gigabyte before compression. `hendrikmuhs/ccache-action` defaults to
+  500 MB, which silently evicts most of the cache mid-build and produces almost no
+  speedup. Linux and macOS run at `max-size: 2G`, Windows at `CCACHE_MAXSIZE: 3G`.
+
+`CCACHE_COMPILERCHECK=content` is set on every job, because V8's toolchain is
+re-downloaded by the gclient hooks on each run and ccache's default `mtime` check
+would treat every object as a miss.
+
+The `build_windows_arm64` job is `continue-on-error`. Windows arm64 is not yet
+wired into `go.mod`, so its failure cannot break a consumer — but without this a
+failing arm64 job skips the commit job and discards every other platform's build.
 
 ### Flushing after C/C++ standard library printing for debugging
 
