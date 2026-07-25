@@ -7,4 +7,5 @@ use (
 	./deps/linux_amd64
 	./deps/linux_arm64
 	./deps/windows_amd64
+	./deps/windows_arm64
 )

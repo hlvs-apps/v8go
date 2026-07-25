@@ -17,6 +17,7 @@ replace (
 	github.com/hlvs-apps/v8go/deps/linux_amd64 => ./deps/linux_amd64
 	github.com/hlvs-apps/v8go/deps/linux_arm64 => ./deps/linux_arm64
 	github.com/hlvs-apps/v8go/deps/windows_amd64 => ./deps/windows_amd64
+	github.com/hlvs-apps/v8go/deps/windows_arm64 => ./deps/windows_arm64
 )
 
 require (
@@ -25,6 +26,7 @@ require (
 	github.com/hlvs-apps/v8go/deps/linux_amd64 v0.0.0-20260724173457-9b83dd438cfd
 	github.com/hlvs-apps/v8go/deps/linux_arm64 v0.0.0-20260724173457-9b83dd438cfd
 	github.com/hlvs-apps/v8go/deps/windows_amd64 v0.0.0-20260724173457-9b83dd438cfd
+	github.com/hlvs-apps/v8go/deps/windows_arm64 v0.0.0-20260724173457-9b83dd438cfd
 	github.com/stretchr/testify v1.11.1
 )
 
