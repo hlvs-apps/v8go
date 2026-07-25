@@ -22,11 +22,10 @@ yourself.
 | --- | :---: | :---: | --- |
 | **Linux** | ✅ | ✅ | GCC or Clang |
 | **macOS** | ✅ | ✅ | Xcode Clang |
-| **Windows** | ✅ | 🚧 | **MinGW-w64 only, never MSVC** — see [Windows](#windows) |
+| **Windows** | ✅ | ✅ | **MinGW-w64 only, never MSVC** — see [Windows](#windows) |
 
 ✅ — a prebuilt static V8 library is committed; nothing is needed at `go get` time
 beyond a working cgo C compiler.
-🚧 — the CI build is wired up but no library has been published yet.
 
 cgo is required, so `CGO_ENABLED=0` and cross-compiling without a C toolchain for
 the target are not supported.
@@ -51,7 +50,7 @@ the v8go contributors.
 ### What this repository adds
 
 - **Current V8.** Tracks recent V8 releases (currently 14.6.202.28)
-- **Windows (amd64) support** via the MinGW-w64 toolchain — see
+- **Windows support (amd64 and arm64)** via the MinGW-w64 toolchain — see
   [Windows](#windows).
 - **`Value.ArrayBufferViewBytes() []byte`** — copies the bytes of any
   `ArrayBufferView` (typed array or `DataView`) into a Go-owned slice with a
@@ -300,17 +299,15 @@ MSYS2 is only required to *build V8 itself*.
 
 #### Windows on ARM
 
-The arm64 CI build (`build_windows_arm64` in
-`.github/workflows/v8_build.yml`) **builds green**, but no library has been
-published yet, so `windows/arm64` is not usable from `go get` today. Once the
-artifact is committed, `deps/update_cgo.py` generates the Go wiring automatically
-and the `deps/*` modules need re-pinning as described under
-[Upgrading the V8 binaries](#upgrading-the-v8-binaries).
+`windows/arm64` is supported and ships a prebuilt library like every other
+platform. Your cgo compiler must be the **CLANGARM64** clang from
+[MSYS2](https://www.msys2.org/) (`mingw-w64-clang-aarch64-clang`); the
+`mingw-w64-x86_64-gcc` used for amd64 is not an aarch64 compiler.
 
-It builds natively on GitHub's free `windows-11-arm` runners under MSYS2's
-**CLANGARM64** environment. Cross-compiling from x64 is not an option: mingw-w64
-ships no aarch64 GCC, and the MinGW GN toolchain invokes a bare `clang` with no
-`--target`.
+V8 is built for it natively on GitHub's free `windows-11-arm` runners, also under
+CLANGARM64 (`build_windows_arm64` in `.github/workflows/v8_build.yml`).
+Cross-compiling from x64 is not an option: mingw-w64 ships no aarch64 GCC, and
+the MinGW GN toolchain invokes a bare `clang` with no `--target`.
 
 One consequence of CLANGARM64 worth knowing if you touch `deps/build.py`: its
 `ar` is **llvm-ar**, not binutils. The two disagree about `ar xN`. binutils on
@@ -340,7 +337,7 @@ BSD-3-Clause; see [`patches/windows/LICENSE`](patches/windows/LICENSE).
 V8 version: **14.6.202.28** (March 2026)
 
 In order to make `v8go` usable as a standard Go package, prebuilt static libraries of V8
-are included for Linux (amd64 and arm64), macOS (amd64 and arm64) and Windows (amd64), so
+are included for Linux, macOS and Windows on both amd64 and arm64, so
 you *should not* need to build V8 yourself. Each platform's library lives in its own Go
 module under `deps/<os>_<arch>/`, split into `libv8-N.a` parts to stay under GitHub's
 100 MiB file size limit.
@@ -381,14 +378,14 @@ The next steps are:
 Build](https://github.com/hlvs-apps/v8go/actions?query=workflow%3A%22V8+Build%22) Github Action, Select "Run workflow",
 and select your pushed branch eg. `v8_upgrade/<v8-version>`.
 1) Once built, this opens a PR against your branch for each supported platform —
-Linux (amd64 and arm64), macOS (amd64 and arm64) and Windows (amd64) — adding that
+Linux, macOS and Windows on both amd64 and arm64 — adding that
 platform's static library under `deps/<os>_<arch>/`. GitHub's hard file size limit is
 100 MiB, so each library is committed as a set of split archive parts (`libv8-0.a`,
 `libv8-1.a`, …) listed in that directory's `libmanifest`; `deps/build.py` (see
 `split_ar()`) produces them and cgo links the parts. Merge these PRs into your branch.
 
 1) **Re-pin the `deps/*` modules.** Each `deps/<os>_<arch>` directory is its own Go
-module, and the root `go.mod` `require`s all five at a pseudo-version. Bump those five
+module, and the root `go.mod` `require`s all six at a pseudo-version. Bump those six
 lines to a commit that contains **every** `deps/*/go.mod` together with the newly built
 binaries — normally the commit that merged the last platform PR. Be careful here: the
 `replace ... => ./deps/...` directives hide a wrong pin during local development,

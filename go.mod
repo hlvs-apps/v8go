@@ -21,12 +21,12 @@ replace (
 )
 
 require (
-	github.com/hlvs-apps/v8go/deps/darwin_amd64 v0.0.0-20260724173457-9b83dd438cfd
-	github.com/hlvs-apps/v8go/deps/darwin_arm64 v0.0.0-20260724173457-9b83dd438cfd
-	github.com/hlvs-apps/v8go/deps/linux_amd64 v0.0.0-20260724173457-9b83dd438cfd
-	github.com/hlvs-apps/v8go/deps/linux_arm64 v0.0.0-20260724173457-9b83dd438cfd
-	github.com/hlvs-apps/v8go/deps/windows_amd64 v0.0.0-20260724173457-9b83dd438cfd
-	github.com/hlvs-apps/v8go/deps/windows_arm64 v0.0.0-20260724173457-9b83dd438cfd
+	github.com/hlvs-apps/v8go/deps/darwin_amd64 v0.0.0-20260725115757-bb97e935fdc8
+	github.com/hlvs-apps/v8go/deps/darwin_arm64 v0.0.0-20260725115757-bb97e935fdc8
+	github.com/hlvs-apps/v8go/deps/linux_amd64 v0.0.0-20260725115757-bb97e935fdc8
+	github.com/hlvs-apps/v8go/deps/linux_arm64 v0.0.0-20260725115757-bb97e935fdc8
+	github.com/hlvs-apps/v8go/deps/windows_amd64 v0.0.0-20260725115757-bb97e935fdc8
+	github.com/hlvs-apps/v8go/deps/windows_arm64 v0.0.0-20260725115757-bb97e935fdc8
 	github.com/stretchr/testify v1.11.1
 )
 
