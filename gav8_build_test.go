@@ -1,0 +1,1423 @@
+// Copyright 2026 the v8go contributors. All rights reserved.
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+package v8go_test
+
+import (
+	"bytes"
+	"math"
+	"runtime"
+	"strconv"
+	"testing"
+	"time"
+	"unsafe"
+
+	v8 "github.com/hlvs-apps/v8go"
+)
+
+/********** program assembly **********/
+
+// prog assembles a build program and the payload it indexes.
+//
+// The two halves are deliberately separable. In a straight-line program the
+// ops and the data are emitted together, and the combined helpers below do
+// that. Inside an OpRepeat body they are not: the body's ops are emitted once
+// and its data is appended once per iteration, which is the entire reason the
+// op buffer is O(type complexity) instead of O(data size). Tests that use
+// OpRepeat emit the body with op and then append the data with the data*
+// helpers, in execution order.
+type prog struct {
+	ops      []uint32
+	shapes   []v8.ShapeDef
+	buf      []byte
+	keySpans []v8.Span
+	valSpans []v8.Span
+	ptrs     []unsafe.Pointer
+	nums     []int64
+	floats   []float64
+	counts   []int32
+
+	pinner runtime.Pinner
+	held   [][]byte
+}
+
+// release unpins everything the program pinned. Every prog needs a deferred
+// call to it, or the pinned leaves outlive their guarantee.
+func (p *prog) release() { p.pinner.Unpin() }
+
+func (p *prog) payload() *v8.Payload {
+	spans := make([]v8.Span, 0, len(p.keySpans)+len(p.valSpans))
+	spans = append(spans, p.keySpans...)
+	spans = append(spans, p.valSpans...)
+	return &v8.Payload{
+		Ops:      p.ops,
+		Shapes:   p.shapes,
+		Buf:      p.buf,
+		Spans:    spans,
+		KeySpans: len(p.keySpans),
+		Ptrs:     p.ptrs,
+		Nums:     p.nums,
+		Floats:   p.floats,
+		Counts:   p.counts,
+	}
+}
+
+func (p *prog) build(t *testing.T, ctx *v8.Context) *v8.Value {
+	t.Helper()
+	val, err := v8.BuildValue(ctx, p.payload())
+	fatalIf(t, err)
+	return val
+}
+
+// stage copies b into the shared buffer and returns a span pointing at it.
+func (p *prog) stage(b []byte) v8.Span {
+	off := uint32(len(p.buf))
+	p.buf = append(p.buf, b...)
+	return v8.Span{Off: off, Len: uint32(len(b)), Kind: v8.SpanStaged}
+}
+
+// pin leaves b where it is and pins it, which is what a producer does for a
+// leaf too large to be worth copying. The pin lasts until release.
+func (p *prog) pin(b []byte) v8.Span {
+	idx := uint32(len(p.ptrs))
+	if len(b) == 0 {
+		p.ptrs = append(p.ptrs, nil)
+		return v8.Span{Off: idx, Len: 0, Kind: v8.SpanPinned}
+	}
+	p.pinner.Pin(&b[0])
+	p.held = append(p.held, b)
+	p.ptrs = append(p.ptrs, unsafe.Pointer(&b[0]))
+	return v8.Span{Off: idx, Len: uint32(len(b)), Kind: v8.SpanPinned}
+}
+
+// --- program only ---
+
+func (p *prog) op(words ...uint32) { p.ops = append(p.ops, words...) }
+
+// shape registers an object shape and returns the id an OpObj operand uses.
+func (p *prog) shape(keys ...string) uint32 {
+	first := uint32(len(p.keySpans))
+	for _, k := range keys {
+		p.keySpans = append(p.keySpans, p.stage([]byte(k)))
+	}
+	p.shapes = append(p.shapes, v8.ShapeDef{First: first, N: uint32(len(keys))})
+	return uint32(len(p.shapes) - 1)
+}
+
+// --- data only ---
+
+func (p *prog) dataStr(s string)    { p.valSpans = append(p.valSpans, p.stage([]byte(s))) }
+func (p *prog) dataPinStr(s string) { p.valSpans = append(p.valSpans, p.pin([]byte(s))) }
+func (p *prog) dataBytes(b []byte)  { p.valSpans = append(p.valSpans, p.stage(b)) }
+func (p *prog) dataPinBytes(b []byte) {
+	p.valSpans = append(p.valSpans, p.pin(b))
+}
+func (p *prog) dataInt(v int64)   { p.nums = append(p.nums, v) }
+func (p *prog) dataF64(v float64) { p.floats = append(p.floats, v) }
+func (p *prog) dataCount(n int32) { p.counts = append(p.counts, n) }
+
+// --- op and data together, for straight-line programs ---
+
+func (p *prog) null()        { p.op(v8.OpNull) }
+func (p *prog) undef()       { p.op(v8.OpUndef) }
+func (p *prog) truth()       { p.op(v8.OpTrue) }
+func (p *prog) falsity()     { p.op(v8.OpFalse) }
+func (p *prog) mark()        { p.op(v8.OpMark) }
+func (p *prog) arr()         { p.op(v8.OpArrFromMark) }
+func (p *prog) end()         { p.op(v8.OpEnd) }
+func (p *prog) obj(s uint32) { p.op(v8.OpObj, s) }
+
+func (p *prog) boolean(v bool) {
+	p.op(v8.OpBool)
+	if v {
+		p.dataInt(1)
+	} else {
+		p.dataInt(0)
+	}
+}
+
+func (p *prog) integer(v int64) { p.op(v8.OpInt); p.dataInt(v) }
+func (p *prog) float(v float64) { p.op(v8.OpF64); p.dataF64(v) }
+func (p *prog) str(s string)    { p.op(v8.OpStr); p.dataStr(s) }
+func (p *prog) pinStr(s string) { p.op(v8.OpStr); p.dataPinStr(s) }
+func (p *prog) bytesv(b []byte) { p.op(v8.OpBytes); p.dataBytes(b) }
+func (p *prog) pinBytes(b []byte) {
+	p.op(v8.OpBytes)
+	p.dataPinBytes(b)
+}
+
+/********** round trip **********/
+
+func TestBuildRoundTrip(t *testing.T) {
+	t.Parallel()
+	iso := v8.NewIsolate()
+	defer iso.Dispose()
+	ctx := v8.NewContext(iso)
+	defer ctx.Close()
+
+	tests := []struct {
+		name  string
+		build func(p *prog)
+		expr  string
+		want  string
+	}{
+		{
+			name:  "null",
+			build: func(p *prog) { p.null(); p.end() },
+			expr:  "v === null ? 'null' : typeof v",
+			want:  "null",
+		},
+		{
+			name:  "undefined",
+			build: func(p *prog) { p.undef(); p.end() },
+			expr:  "typeof v",
+			want:  "undefined",
+		},
+		{
+			name:  "literal true",
+			build: func(p *prog) { p.truth(); p.end() },
+			expr:  "typeof v + ':' + v",
+			want:  "boolean:true",
+		},
+		{
+			name:  "literal false",
+			build: func(p *prog) { p.falsity(); p.end() },
+			expr:  "typeof v + ':' + v",
+			want:  "boolean:false",
+		},
+		{
+			// OpBool reads its value from Nums, where a producer parks
+			// booleans as 0/1 rather than giving them an array of their own.
+			name:  "bool from nums",
+			build: func(p *prog) { p.boolean(true); p.end() },
+			expr:  "typeof v + ':' + v",
+			want:  "boolean:true",
+		},
+		{
+			name:  "int32 min",
+			build: func(p *prog) { p.integer(-2147483648); p.end() },
+			expr:  "typeof v + ':' + v",
+			want:  "number:-2147483648",
+		},
+		{
+			// Past the Smi range the builder falls back to a heap number,
+			// which is also what JSON.parse would produce for the literal.
+			name:  "int64 beyond int32",
+			build: func(p *prog) { p.integer(9007199254740991); p.end() },
+			expr:  "typeof v + ':' + v",
+			want:  "number:9007199254740991",
+		},
+		{
+			name:  "float64",
+			build: func(p *prog) { p.float(1.5e300); p.end() },
+			expr:  "typeof v + ':' + v",
+			want:  "number:1.5e+300",
+		},
+		{
+			name:  "float64 NaN",
+			build: func(p *prog) { p.float(math.NaN()); p.end() },
+			expr:  "Number.isNaN(v) ? 'nan' : String(v)",
+			want:  "nan",
+		},
+		{
+			name:  "ascii string",
+			build: func(p *prog) { p.str("hello world"); p.end() },
+			expr:  "typeof v + ':' + v.length + ':' + v",
+			want:  "string:11:hello world",
+		},
+		{
+			name:  "empty string",
+			build: func(p *prog) { p.str(""); p.end() },
+			expr:  "typeof v + ':' + v.length",
+			want:  "string:0",
+		},
+		{
+			name:  "non-ascii utf8",
+			build: func(p *prog) { p.str("héllo · 日本 · 😀"); p.end() },
+			expr:  "v",
+			want:  "héllo · 日本 · 😀",
+		},
+		{
+			// Spans are length-delimited, not NUL-terminated: the NUL is a
+			// character like any other.
+			name:  "interior NUL",
+			build: func(p *prog) { p.str("a\x00b"); p.end() },
+			expr:  "v.length + ':' + [...v].map(c => c.charCodeAt(0)).join(',')",
+			want:  "3:97,0,98",
+		},
+		{
+			name:  "bytes",
+			build: func(p *prog) { p.bytesv([]byte{0, 1, 127, 128, 255}); p.end() },
+			expr:  "(v instanceof Uint8Array) + ':' + v.length + ':' + Array.from(v).join(',')",
+			want:  "true:5:0,1,127,128,255",
+		},
+		{
+			// Not valid UTF-8 anywhere in it, and it must survive verbatim:
+			// OpBytes copies, it does not transcode.
+			name:  "non-utf8 bytes",
+			build: func(p *prog) { p.bytesv([]byte{0xff, 0xfe, 0x80, 0xc0}); p.end() },
+			expr:  "Array.from(v).join(',')",
+			want:  "255,254,128,192",
+		},
+		{
+			name:  "empty bytes",
+			build: func(p *prog) { p.bytesv(nil); p.end() },
+			expr:  "(v instanceof Uint8Array) + ':' + v.length",
+			want:  "true:0",
+		},
+		{
+			name:  "empty object",
+			build: func(p *prog) { s := p.shape(); p.obj(s); p.end() },
+			expr:  "JSON.stringify(v) + ':' + (Object.getPrototypeOf(v) === Object.prototype)",
+			want:  "{}:true",
+		},
+		{
+			name:  "empty array",
+			build: func(p *prog) { p.mark(); p.arr(); p.end() },
+			expr:  "Array.isArray(v) + ':' + v.length",
+			want:  "true:0",
+		},
+		{
+			name: "flat object",
+			build: func(p *prog) {
+				s := p.shape("id", "name", "ok")
+				p.integer(7)
+				p.str("seven")
+				p.truth()
+				p.obj(s)
+				p.end()
+			},
+			expr: "JSON.stringify(v) + ':' + v.hasOwnProperty('id')",
+			want: `{"id":7,"name":"seven","ok":true}:true`,
+		},
+		{
+			name: "nested three deep",
+			build: func(p *prog) {
+				leaf := p.shape("deep")
+				mid := p.shape("inner")
+				top := p.shape("outer")
+				// The array collects whatever was pushed since the mark, so
+				// the mark has to precede the object it will collect.
+				p.mark()
+				p.str("bottom")
+				p.obj(leaf)
+				p.arr()
+				p.obj(mid)
+				p.obj(top)
+				p.end()
+			},
+			expr: "JSON.stringify(v)",
+			want: `{"outer":{"inner":[{"deep":"bottom"}]}}`,
+		},
+		{
+			name: "object with 50 keys",
+			build: func(p *prog) {
+				keys := make([]string, 50)
+				for i := range keys {
+					keys[i] = "k" + strconv.Itoa(i)
+				}
+				s := p.shape(keys...)
+				for i := range keys {
+					p.integer(int64(i))
+				}
+				p.obj(s)
+				p.end()
+			},
+			expr: "Object.keys(v).length + ':' + Object.keys(v).join(',') + ':' + Object.values(v).join(',')",
+			want: "50:" + joinRange("k", 50) + ":" + joinRange("", 50),
+		},
+		{
+			name: "mixed array",
+			build: func(p *prog) {
+				p.mark()
+				p.null()
+				p.undef()
+				p.falsity()
+				p.integer(3)
+				p.float(0.5)
+				p.str("x")
+				p.mark()
+				p.arr()
+				p.arr()
+				p.end()
+			},
+			expr: "v.map(x => typeof x).join(',')",
+			want: "object,undefined,boolean,number,number,string,object",
+		},
+		{
+			// The whole point: seven ops, one thousand rows.
+			name: "1000 uniform objects from one repeat",
+			build: func(p *prog) {
+				s := p.shape("i", "s")
+				p.mark()
+				p.op(v8.OpRepeat, 4)
+				p.op(v8.OpInt)
+				p.op(v8.OpStr)
+				p.op(v8.OpObj, s)
+				p.arr()
+				p.end()
+
+				p.dataCount(1000)
+				for i := 0; i < 1000; i++ {
+					p.dataInt(int64(i))
+					p.dataStr("row-" + strconv.Itoa(i))
+				}
+			},
+			expr: `v.length + ':' + v[0].i + ':' + v[999].s + ':' +
+				v.every((o, i) => o.i === i && o.s === 'row-' + i)`,
+			want: "1000:0:row-999:true",
+		},
+		{
+			// Nested repeats: 3 groups, each holding a different number of
+			// rows. The inner count is read once per outer iteration, so the
+			// counts array interleaves with the outer loop.
+			name: "nested repeat",
+			build: func(p *prog) {
+				s := p.shape("n")
+				p.mark()
+				p.op(v8.OpRepeat, 7) // outer body: mark, repeat, 3 ops, arr
+				p.op(v8.OpMark)
+				p.op(v8.OpRepeat, 3)
+				p.op(v8.OpInt)
+				p.op(v8.OpObj, s)
+				p.op(v8.OpArrFromMark)
+				p.arr()
+				p.end()
+
+				groups := [][]int64{{1, 2}, {}, {3, 4, 5}}
+				p.dataCount(int32(len(groups)))
+				for _, g := range groups {
+					p.dataCount(int32(len(g)))
+					for _, n := range g {
+						p.dataInt(n)
+					}
+				}
+			},
+			expr: "JSON.stringify(v)",
+			want: `[[{"n":1},{"n":2}],[],[{"n":3},{"n":4},{"n":5}]]`,
+		},
+		{
+			// A repeat that runs zero times must not touch any cursor but its
+			// own count, so the value that follows it reads the first entry.
+			name: "repeat with n == 0 leaves cursors alone",
+			build: func(p *prog) {
+				p.mark()
+				p.op(v8.OpRepeat, 1)
+				p.op(v8.OpInt)
+				p.op(v8.OpInt)
+				p.arr()
+				p.end()
+
+				p.dataCount(0)
+				p.dataInt(42)
+			},
+			expr: "JSON.stringify(v)",
+			want: "[42]",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			p := &prog{}
+			defer p.release()
+			tt.build(p)
+
+			val := p.build(t, ctx)
+			if got := eval(t, ctx, val, tt.expr); got != tt.want {
+				t.Errorf("%s = %q, want %q", tt.expr, got, tt.want)
+			}
+		})
+	}
+}
+
+// A producer stages small leaves and pins large ones, against a threshold, so
+// production payloads carry both kinds. Both must work, mixed, in one payload
+// and one shape.
+func TestBuildBothSpanKinds(t *testing.T) {
+	t.Parallel()
+	iso := v8.NewIsolate()
+	defer iso.Dispose()
+	ctx := v8.NewContext(iso)
+	defer ctx.Close()
+
+	big := make([]byte, 4096)
+	for i := range big {
+		big[i] = byte(i)
+	}
+
+	p := &prog{}
+	defer p.release()
+
+	s := p.shape("staged", "pinned", "stagedBytes", "pinnedBytes", "pinnedEmpty")
+	p.str("small")
+	p.pinStr("a pinned string that a producer would not bother copying")
+	p.bytesv([]byte{1, 2, 3})
+	p.pinBytes(big)
+	p.pinStr("")
+	p.obj(s)
+	p.end()
+
+	val := p.build(t, ctx)
+
+	const expr = `[v.staged, v.pinned, Array.from(v.stagedBytes).join('-'),
+		v.pinnedBytes.length, v.pinnedBytes[4095], v.pinnedEmpty.length].join('|')`
+	want := "small|a pinned string that a producer would not bother copying|1-2-3|4096|255|0"
+	if got := eval(t, ctx, val, expr); got != want {
+		t.Errorf("mixed span kinds = %q, want %q", got, want)
+	}
+}
+
+// pooledPtrs is package level on purpose. A local slice is kept on the
+// goroutine stack — #cgo noescape says the arguments do not escape — and the
+// cgo pointer check only deep-scans HEAP objects, so a stack-allocated Ptrs
+// silently skips the check that broke the real caller. A producer's staging
+// buffer is long-lived and on the heap; these tests have to be too, or they
+// test nothing.
+var pooledPtrs []unsafe.Pointer
+
+// pinLeaves stages leaves into the pooled array the way a producer does:
+// truncate, pin each, append. It returns the payload arrays for them.
+func pinLeaves(pin *runtime.Pinner, leaves ...[]byte) ([]v8.Span, []unsafe.Pointer) {
+	pooledPtrs = pooledPtrs[:0]
+	spans := make([]v8.Span, len(leaves))
+	for i, b := range leaves {
+		pin.Pin(&b[0])
+		spans[i] = v8.Span{
+			Off:  uint32(len(pooledPtrs)),
+			Len:  uint32(len(b)),
+			Kind: v8.SpanPinned,
+		}
+		pooledPtrs = append(pooledPtrs, unsafe.Pointer(&b[0]))
+	}
+	return spans, pooledPtrs
+}
+
+// A producer pools its staging buffers: Ptrs is truncated with [:0] and
+// refilled per call, and the previous call's pins are dropped when it is done.
+// That is ordinary, correct Go, and it used to abort the process.
+//
+// Passing Ptrs as a Go pointer made the cgo pointer check scan the backing
+// ARRAY — the whole allocation, not the first len(Ptrs) entries — and panic on
+// any slot holding an unpinned Go pointer. The slots past len hold exactly
+// that: pointers from a longer earlier call, unpinned when it finished. So the
+// payload that broke was the one after a bigger one, which is why it took
+// several calls on one engine to show up and never showed up on a fresh one.
+//
+// Nothing the caller can do fixes it: the requirement the check imposes is
+// that memory the call never reads must also hold only pinned pointers.
+func TestBuildPooledPtrsBacking(t *testing.T) {
+	iso := v8.NewIsolate()
+	defer iso.Dispose()
+	ctx := v8.NewContext(iso)
+	defer ctx.Close()
+
+	// A bigger call first, whose pins are then dropped.
+	var first runtime.Pinner
+	spans, ptrs := pinLeaves(&first,
+		[]byte("first leaf"), []byte("second leaf"),
+		[]byte("third leaf"), []byte("fourth leaf"))
+
+	val, err := v8.BuildValue(ctx, &v8.Payload{
+		Ops:   []uint32{v8.OpMark, v8.OpStr, v8.OpStr, v8.OpStr, v8.OpStr, v8.OpArrFromMark, v8.OpEnd},
+		Spans: spans,
+		Ptrs:  ptrs,
+	})
+	fatalIf(t, err)
+	if got := eval(t, ctx, val, "v.join('|')"); got != "first leaf|second leaf|third leaf|fourth leaf" {
+		t.Fatalf("first build = %q", got)
+	}
+	val.Release()
+	first.Unpin()
+
+	// The pooled second call: same backing array, shorter, with stale and
+	// now-unpinned pointers in the slots past len.
+	var second runtime.Pinner
+	defer second.Unpin()
+	spans, ptrs = pinLeaves(&second, []byte("the only leaf this time"))
+
+	val, err = v8.BuildValue(ctx, &v8.Payload{
+		Ops:   []uint32{v8.OpStr, v8.OpEnd},
+		Spans: spans,
+		Ptrs:  ptrs,
+	})
+	fatalIf(t, err)
+	defer val.Release()
+	if got := eval(t, ctx, val, "v"); got != "the only leaf this time" {
+		t.Errorf("pooled build = %q, want %q", got, "the only leaf this time")
+	}
+}
+
+// A megabyte through a pinned span: the path that replaces base64, at a size
+// where a producer would certainly not stage it.
+func TestBuildBytesOneMiB(t *testing.T) {
+	t.Parallel()
+	iso := v8.NewIsolate()
+	defer iso.Dispose()
+	ctx := v8.NewContext(iso)
+	defer ctx.Close()
+
+	const size = 1 << 20
+	want := make([]byte, size)
+	for i := range want {
+		want[i] = byte(i * 31)
+	}
+
+	p := &prog{}
+	defer p.release()
+	p.pinBytes(want)
+	p.end()
+
+	val := p.build(t, ctx)
+	if got := eval(t, ctx, val, "(v instanceof Uint8Array) + ':' + v.length"); got != "true:1048576" {
+		t.Fatalf("1 MiB payload arrived as %q", got)
+	}
+	if got := val.ArrayBufferViewBytes(); !bytes.Equal(got, want) {
+		t.Errorf("1 MiB payload did not round-trip byte for byte")
+	}
+}
+
+/********** the two load-bearing properties **********/
+
+// One crossing per tree. This is the defect v2 exists to fix — the previous
+// ABI said "one crossing" in its rationale and then made every leaf its own
+// cgo call — so it is measured, not asserted.
+//
+// Deliberately not parallel: the counter is process-wide, and Go runs all
+// sequential tests to completion before releasing any parallel ones, so a
+// sequential test has the counter to itself.
+func TestBuildOneCrossing(t *testing.T) {
+	iso := v8.NewIsolate()
+	defer iso.Dispose()
+	ctx := v8.NewContext(iso)
+	defer ctx.Close()
+
+	const cols, rows = 20, 1000
+	keys, data := benchRows(cols, rows)
+	p := buildProgram(keys, data)
+	defer p.release()
+
+	v8.ResetBuildCallCount()
+	val, err := v8.BuildValue(ctx, p.payload())
+	fatalIf(t, err)
+	defer val.Release()
+
+	if got := v8.BuildCallCount(); got != 1 {
+		t.Fatalf("building a %dx%d tree took %d crossings, want exactly 1", cols, rows, got)
+	}
+
+	// And the one crossing really did build the whole thing.
+	const expr = `v.length + ':' + v[999].col_0 + ':' + v[999].col_2 + ':' +
+		Object.keys(v[0]).length`
+	want := "1000:" + strconv.Itoa(999*cols) + ":value-999-2:20"
+	if got := eval(t, ctx, val, expr); got != want {
+		t.Errorf("tree = %q, want %q", got, want)
+	}
+}
+
+// Nothing per node may become a tracked value: that was true of the scope API
+// and has to stay true here. The only visible symptom is this counter.
+func TestBuildNoPerNodeTracking(t *testing.T) {
+	t.Parallel()
+	iso := v8.NewIsolate()
+	defer iso.Dispose()
+	ctx := v8.NewContext(iso)
+	defer ctx.Close()
+
+	const rows = 1000
+	before := ctx.RetainedValueCount()
+
+	p := &prog{}
+	defer p.release()
+	s := p.shape("id", "name", "score")
+	p.mark()
+	p.op(v8.OpRepeat, 5)
+	p.op(v8.OpInt)
+	p.op(v8.OpStr)
+	p.op(v8.OpF64)
+	p.op(v8.OpObj, s)
+	p.arr()
+	p.end()
+
+	p.dataCount(rows)
+	for i := 0; i < rows; i++ {
+		p.dataInt(int64(i))
+		p.dataStr("name-" + strconv.Itoa(i))
+		p.dataF64(float64(i) / 3)
+	}
+
+	val := p.build(t, ctx)
+
+	after := ctx.RetainedValueCount()
+	if delta := after - before; delta != 1 {
+		t.Fatalf("RetainedValueCount grew by %d building a %d-object tree, want exactly 1 (the root); "+
+			"anything more means an m_value leaked per node", delta, rows)
+	}
+
+	if got := eval(t, ctx, val, "v.length + ':' + v[999].name"); got != "1000:name-999" {
+		t.Errorf("root value = %q, want %q", got, "1000:name-999")
+	}
+
+	// Releasing the root frees it and nothing else — the tree was never in the
+	// context's table to begin with. Measured against the count after the
+	// assertion above, which retains a global and a script result of its own.
+	afterEval := ctx.RetainedValueCount()
+	val.Release()
+	if got := ctx.RetainedValueCount(); got != afterEval-1 {
+		t.Errorf("RetainedValueCount after releasing the root = %d, want %d", got, afterEval-1)
+	}
+}
+
+/********** the scope API as an oracle **********/
+
+// The scope API (gav8_values.go) is already tested against hand-written
+// expectations, so building the same tree both ways and comparing transitively
+// validates this one without restating any of them. Key order is compared as
+// well as values: two objects can hold the same properties and still not be
+// the same object to a consumer that iterates them.
+func TestBuildMatchesBatchScope(t *testing.T) {
+	t.Parallel()
+	iso := v8.NewIsolate()
+	defer iso.Dispose()
+	ctx := v8.NewContext(iso)
+	defer ctx.Close()
+
+	const rows = 200
+
+	// --- the same tree through the op-buffer builder ---
+	p := &prog{}
+	defer p.release()
+	rowShape := p.shape("id", "name", "score", "tags", "meta")
+	metaShape := p.shape("live", "note")
+
+	p.mark()
+	p.op(v8.OpRepeat, 14)
+	p.op(v8.OpInt)  // id
+	p.op(v8.OpStr)  // name
+	p.op(v8.OpF64)  // score
+	p.op(v8.OpMark) // tags
+	p.op(v8.OpStr)
+	p.op(v8.OpStr)
+	p.op(v8.OpArrFromMark)
+	p.op(v8.OpBool) // meta.live
+	p.op(v8.OpStr)  // meta.note
+	p.op(v8.OpObj, metaShape)
+	p.op(v8.OpObj, rowShape)
+	p.op(v8.OpNull) // a trailing null, dropped by nothing: it joins the array
+	p.arr()
+	p.end()
+
+	p.dataCount(rows)
+	for i := 0; i < rows; i++ {
+		p.dataInt(int64(i))
+		p.dataStr("name-" + strconv.Itoa(i))
+		p.dataF64(float64(i) / 7)
+		p.dataStr("tag-a-" + strconv.Itoa(i))
+		p.dataPinStr("tag-b-" + strconv.Itoa(i))
+		p.dataInt(int64(i % 2))
+		p.dataStr("note " + strconv.Itoa(i))
+	}
+
+	built := p.build(t, ctx)
+
+	// --- and through the per-node scope API ---
+	s := v8.NewBatchScope(ctx)
+	rowShapeV1 := s.Shape([]string{"id", "name", "score", "tags", "meta"})
+	metaShapeV1 := s.Shape([]string{"live", "note"})
+	elems := make([]v8.LocalRef, 0, rows*2)
+	for i := 0; i < rows; i++ {
+		tags := s.Array([]v8.LocalRef{
+			s.String("tag-a-" + strconv.Itoa(i)),
+			s.String("tag-b-" + strconv.Itoa(i)),
+		})
+		meta := s.Object(metaShapeV1, []v8.LocalRef{
+			s.Bool(i%2 == 1),
+			s.String("note " + strconv.Itoa(i)),
+		})
+		elems = append(elems, s.Object(rowShapeV1, []v8.LocalRef{
+			s.Int32(int32(i)),
+			s.String("name-" + strconv.Itoa(i)),
+			s.Float64(float64(i) / 7),
+			tags,
+			meta,
+		}), s.Null())
+	}
+	oracle, err := s.Result(s.Array(elems))
+	fatalIf(t, err)
+	s.Close()
+
+	fatalIf(t, ctx.Global().Set("built", built))
+	fatalIf(t, ctx.Global().Set("oracle", oracle))
+
+	// Structural comparison including key order at every object.
+	const cmp = `(() => {
+		const diff = (a, b, path) => {
+			if (Array.isArray(a) || Array.isArray(b)) {
+				if (!Array.isArray(a) || !Array.isArray(b)) return 'arrayness at ' + path;
+				if (a.length !== b.length) return 'length at ' + path;
+				for (let i = 0; i < a.length; i++) {
+					const d = diff(a[i], b[i], path + '[' + i + ']');
+					if (d) return d;
+				}
+				return '';
+			}
+			if (a !== null && typeof a === 'object') {
+				if (b === null || typeof b !== 'object') return 'type at ' + path;
+				if (Object.getPrototypeOf(a) !== Object.getPrototypeOf(b)) return 'prototype at ' + path;
+				const ka = Object.keys(a), kb = Object.keys(b);
+				if (ka.join(',') !== kb.join(',')) {
+					return 'key order at ' + path + ': [' + ka + '] vs [' + kb + ']';
+				}
+				for (const k of ka) {
+					const d = diff(a[k], b[k], path + '.' + k);
+					if (d) return d;
+				}
+				return '';
+			}
+			if (a !== b) return 'value at ' + path + ': ' + String(a) + ' vs ' + String(b);
+			return '';
+		};
+		return diff(built, oracle, '$') || 'equal';
+	})()`
+
+	out, err := ctx.RunScript(cmp, "gav8_build_oracle.js")
+	fatalIf(t, err)
+	if got := out.String(); got != "equal" {
+		t.Errorf("op-buffer tree differs from the scope-built tree: %s", got)
+	}
+}
+
+/********** failing closed **********/
+
+// The op buffer is generated, but it is the only thing between a producer bug
+// and an out-of-bounds read of process memory. Every one of these must come
+// back as an error, with no value and nothing retained.
+func TestBuildMalformed(t *testing.T) {
+	t.Parallel()
+	iso := v8.NewIsolate()
+	defer iso.Dispose()
+	ctx := v8.NewContext(iso)
+	defer ctx.Close()
+
+	oneKey := []v8.ShapeDef{{First: 0, N: 1}}
+	twoKeys := []v8.ShapeDef{{First: 0, N: 2}}
+	keySpans := []v8.Span{
+		{Off: 0, Len: 1, Kind: v8.SpanStaged},
+		{Off: 1, Len: 1, Kind: v8.SpanStaged},
+	}
+
+	tests := []struct {
+		name string
+		p    v8.Payload
+	}{
+		{
+			name: "empty op buffer",
+			p:    v8.Payload{},
+		},
+		{
+			name: "no OP_END",
+			p:    v8.Payload{Ops: []uint32{v8.OpNull}},
+		},
+		{
+			name: "OP_END with an empty stack",
+			p:    v8.Payload{Ops: []uint32{v8.OpEnd}},
+		},
+		{
+			name: "OP_END with two values left",
+			p:    v8.Payload{Ops: []uint32{v8.OpNull, v8.OpNull, v8.OpEnd}},
+		},
+		{
+			name: "unknown opcode",
+			p:    v8.Payload{Ops: []uint32{9999, v8.OpEnd}},
+		},
+		{
+			name: "OP_OBJ truncated before its shape id",
+			p:    v8.Payload{Ops: []uint32{v8.OpObj}, Shapes: oneKey, Spans: keySpans[:1], KeySpans: 1, Buf: []byte("ab")},
+		},
+		{
+			name: "OP_REPEAT truncated before its body length",
+			p:    v8.Payload{Ops: []uint32{v8.OpRepeat}, Counts: []int32{1}},
+		},
+		{
+			name: "shape id out of range",
+			p:    v8.Payload{Ops: []uint32{v8.OpObj, 7, v8.OpEnd}},
+		},
+		{
+			name: "shape keys outside the key region",
+			p: v8.Payload{
+				Ops: []uint32{v8.OpNull, v8.OpNull, v8.OpObj, 0, v8.OpEnd},
+				// Two keys claimed, one key span declared.
+				Shapes: twoKeys, Spans: keySpans, KeySpans: 1, Buf: []byte("ab"),
+			},
+		},
+		{
+			name: "duplicate keys in a shape",
+			p: v8.Payload{
+				Ops:    []uint32{v8.OpNull, v8.OpNull, v8.OpObj, 0, v8.OpEnd},
+				Shapes: twoKeys,
+				Spans: []v8.Span{
+					{Off: 0, Len: 1, Kind: v8.SpanStaged},
+					{Off: 0, Len: 1, Kind: v8.SpanStaged},
+				},
+				KeySpans: 2, Buf: []byte("a"),
+			},
+		},
+		{
+			name: "stack underflow at OP_OBJ",
+			p: v8.Payload{
+				Ops: []uint32{v8.OpNull, v8.OpObj, 0, v8.OpEnd},
+				// Shape wants two values, one was pushed.
+				Shapes: twoKeys, Spans: keySpans, KeySpans: 2, Buf: []byte("ab"),
+			},
+		},
+		{
+			name: "OP_OBJ pops past an OP_MARK",
+			p: v8.Payload{
+				Ops: []uint32{v8.OpNull, v8.OpNull, v8.OpMark, v8.OpNull,
+					v8.OpObj, 0, v8.OpEnd},
+				Shapes: twoKeys, Spans: keySpans, KeySpans: 2, Buf: []byte("ab"),
+			},
+		},
+		{
+			name: "OP_ARR_FROM_MARK without a mark",
+			p:    v8.Payload{Ops: []uint32{v8.OpNull, v8.OpArrFromMark, v8.OpEnd}},
+		},
+		{
+			name: "OP_END with an unclosed mark",
+			p:    v8.Payload{Ops: []uint32{v8.OpMark, v8.OpNull, v8.OpEnd}},
+		},
+		{
+			name: "OP_END inside a repeat body",
+			p: v8.Payload{
+				Ops:    []uint32{v8.OpRepeat, 2, v8.OpEnd, v8.OpNull, v8.OpEnd},
+				Counts: []int32{1},
+			},
+		},
+		{
+			name: "repeat body runs past the op buffer",
+			p: v8.Payload{
+				Ops:    []uint32{v8.OpRepeat, 99, v8.OpNull, v8.OpEnd},
+				Counts: []int32{1},
+			},
+		},
+		{
+			name: "repeat with an empty body",
+			p: v8.Payload{
+				Ops:    []uint32{v8.OpRepeat, 0, v8.OpNull, v8.OpEnd},
+				Counts: []int32{1},
+			},
+		},
+		{
+			name: "negative repeat count",
+			p: v8.Payload{
+				Ops:    []uint32{v8.OpRepeat, 1, v8.OpNull, v8.OpEnd},
+				Counts: []int32{-1},
+			},
+		},
+		{
+			name: "counts cursor exhausted",
+			p:    v8.Payload{Ops: []uint32{v8.OpRepeat, 1, v8.OpNull, v8.OpEnd}},
+		},
+		{
+			name: "nums cursor exhausted",
+			p:    v8.Payload{Ops: []uint32{v8.OpInt, v8.OpEnd}},
+		},
+		{
+			name: "nums cursor exhausted at OP_BOOL",
+			p:    v8.Payload{Ops: []uint32{v8.OpBool, v8.OpEnd}},
+		},
+		{
+			name: "floats cursor exhausted",
+			p:    v8.Payload{Ops: []uint32{v8.OpF64, v8.OpEnd}},
+		},
+		{
+			name: "span cursor exhausted",
+			p:    v8.Payload{Ops: []uint32{v8.OpStr, v8.OpEnd}},
+		},
+		{
+			name: "value cursor may not reach into the key region",
+			p: v8.Payload{
+				Ops: []uint32{v8.OpStr, v8.OpEnd},
+				// One span, and it is a key, so there is no value span at all.
+				Spans: keySpans[:1], KeySpans: 1, Buf: []byte("a"),
+			},
+		},
+		{
+			name: "staged span runs past the end of buf",
+			p: v8.Payload{
+				Ops:   []uint32{v8.OpStr, v8.OpEnd},
+				Spans: []v8.Span{{Off: 0, Len: 64, Kind: v8.SpanStaged}},
+				Buf:   []byte("short"),
+			},
+		},
+		{
+			name: "staged span offset past the end of buf",
+			p: v8.Payload{
+				Ops:   []uint32{v8.OpStr, v8.OpEnd},
+				Spans: []v8.Span{{Off: 4096, Len: 1, Kind: v8.SpanStaged}},
+				Buf:   []byte("short"),
+			},
+		},
+		{
+			name: "staged span length wraps",
+			p: v8.Payload{
+				Ops:   []uint32{v8.OpBytes, v8.OpEnd},
+				Spans: []v8.Span{{Off: 4, Len: 0xFFFFFFFF, Kind: v8.SpanStaged}},
+				Buf:   []byte("short"),
+			},
+		},
+		{
+			name: "pinned span index out of range",
+			p: v8.Payload{
+				Ops:   []uint32{v8.OpStr, v8.OpEnd},
+				Spans: []v8.Span{{Off: 3, Len: 1, Kind: v8.SpanPinned}},
+				Ptrs:  []unsafe.Pointer{nil},
+			},
+		},
+		{
+			name: "pinned span with no ptrs at all",
+			p: v8.Payload{
+				Ops:   []uint32{v8.OpStr, v8.OpEnd},
+				Spans: []v8.Span{{Off: 0, Len: 1, Kind: v8.SpanPinned}},
+			},
+		},
+		{
+			name: "null pinned pointer with a non-zero length",
+			p: v8.Payload{
+				Ops:   []uint32{v8.OpStr, v8.OpEnd},
+				Spans: []v8.Span{{Off: 0, Len: 8, Kind: v8.SpanPinned}},
+				Ptrs:  []unsafe.Pointer{nil},
+			},
+		},
+		{
+			name: "unknown span kind",
+			p: v8.Payload{
+				Ops:   []uint32{v8.OpStr, v8.OpEnd},
+				Spans: []v8.Span{{Off: 0, Len: 1, Kind: 7}},
+				Buf:   []byte("a"),
+			},
+		},
+		{
+			name: "KeySpans past the end of Spans",
+			p: v8.Payload{
+				Ops:      []uint32{v8.OpNull, v8.OpEnd},
+				Spans:    keySpans,
+				KeySpans: 9,
+				Buf:      []byte("ab"),
+			},
+		},
+		{
+			name: "negative KeySpans",
+			p: v8.Payload{
+				Ops:      []uint32{v8.OpNull, v8.OpEnd},
+				KeySpans: -1,
+			},
+		},
+	}
+
+	before := ctx.RetainedValueCount()
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			p := tt.p
+			val, err := v8.BuildValue(ctx, &p)
+			if err == nil {
+				val.Release()
+				t.Fatalf("malformed payload built a value instead of returning an error")
+			}
+			if val != nil {
+				t.Errorf("error return also produced a value")
+			}
+		})
+	}
+	if got := ctx.RetainedValueCount(); got != before {
+		t.Errorf("RetainedValueCount grew by %d over %d rejected payloads; a failure must build nothing",
+			got-before, len(tests))
+	}
+}
+
+func TestBuildNilArguments(t *testing.T) {
+	t.Parallel()
+	iso := v8.NewIsolate()
+	defer iso.Dispose()
+	ctx := v8.NewContext(iso)
+	defer ctx.Close()
+
+	if _, err := v8.BuildValue(nil, &v8.Payload{Ops: []uint32{v8.OpNull, v8.OpEnd}}); err == nil {
+		t.Error("BuildValue(nil context) returned no error")
+	}
+	if _, err := v8.BuildValue(ctx, nil); err == nil {
+		t.Error("BuildValue(nil payload) returned no error")
+	}
+}
+
+// Random op buffers must not crash the process, whatever else they do. Only
+// the seed corpus runs under `go test`; the caps keep a fuzzed count from
+// turning a memory-safety test into an out-of-memory one.
+func FuzzBuildValue(f *testing.F) {
+	f.Add([]byte{})
+	f.Add([]byte{0})
+	f.Add([]byte{1, 0})
+	f.Add([]byte{11, 8, 12, 0})
+	f.Add([]byte{13, 4, 6, 8, 10, 0, 12, 0})
+	f.Add([]byte{10, 0, 0, 255, 255, 255, 255})
+
+	iso := v8.NewIsolate()
+	f.Cleanup(iso.Dispose)
+	ctx := v8.NewContext(iso)
+	f.Cleanup(ctx.Close)
+
+	f.Fuzz(func(t *testing.T, data []byte) {
+		if len(data) > 512 {
+			data = data[:512]
+		}
+		ops := make([]uint32, len(data))
+		for i, b := range data {
+			ops[i] = uint32(b)
+		}
+		p := &v8.Payload{
+			Ops: ops,
+			Shapes: []v8.ShapeDef{
+				{First: 0, N: 0},
+				{First: 0, N: 2},
+				{First: 1, N: 9},
+			},
+			Buf:      []byte("abcdefgh"),
+			Spans:    []v8.Span{{Off: 0, Len: 1}, {Off: 1, Len: 2}, {Off: 3, Len: 5}},
+			KeySpans: 2,
+			Nums:     []int64{0, 1, -1},
+			Floats:   []float64{0.5, 2},
+			Counts:   []int32{0, 1, 3},
+		}
+		if val, err := v8.BuildValue(ctx, p); err == nil {
+			val.Release()
+		}
+	})
+}
+
+// The shape the only real consumer uses: the builder is called from inside a
+// FunctionTemplate callback, so the thread is already inside the isolate, a
+// HandleScope and a Context::Scope, with a JS call in flight. Then the isolate
+// is disposed.
+//
+// This is not a variation on the tests above, it is a different execution
+// context, and getting it wrong does not fail a build or an assertion — it
+// aborts the process at Isolate::Dispose with "Disposing the isolate that is
+// entered by a thread", arbitrarily far from the call that caused it.
+func TestBuildValueInsideCallback(t *testing.T) {
+	// Sequential: shares the pooled Ptrs array with TestBuildPooledPtrsBacking,
+	// and that array's stale slots are the point of both.
+	iso := v8.NewIsolate()
+	global := v8.NewObjectTemplate(iso)
+
+	var buildErr error
+	var pin runtime.Pinner
+	defer pin.Unpin()
+
+	fn := v8.NewFunctionTemplate(iso, func(info *v8.FunctionCallbackInfo) *v8.Value {
+		n := int32(info.Args()[0].Int32())
+
+		// A negative count means: go back into JS from here, which comes back
+		// into this callback and builds one level deeper. That is the
+		// re-entrancy question — whether entering the isolate and a context
+		// from inside an in-flight callback is safe — asked directly.
+		if n < 0 {
+			out, err := info.Context().RunScript("goBuild(3)", "gav8_nested.js")
+			if err != nil {
+				buildErr = err
+				return nil
+			}
+			return out
+		}
+
+		// Pinned leaves out of the pooled array, so each call leaves stale
+		// entries behind for the next one — the production shape, and the one
+		// that turns a pointer-check panic into a process abort here.
+		pin.Unpin()
+		leaves := make([][]byte, n)
+		for i := range leaves {
+			leaves[i] = []byte("row-" + strconv.Itoa(i))
+		}
+		spans, ptrs := pinLeaves(&pin, leaves...)
+
+		p := &prog{}
+		defer p.release()
+		s := p.shape("i", "s")
+		p.mark()
+		p.op(v8.OpRepeat, 4)
+		p.op(v8.OpInt)
+		p.op(v8.OpStr)
+		p.op(v8.OpObj, s)
+		p.arr()
+		p.end()
+		p.dataCount(n)
+		for i := int32(0); i < n; i++ {
+			p.dataInt(int64(i))
+		}
+
+		payload := p.payload()
+		// The keys are staged; the values are the pinned leaves above.
+		payload.Spans = append(payload.Spans[:payload.KeySpans:payload.KeySpans], spans...)
+		payload.Ptrs = ptrs
+
+		val, err := v8.BuildValue(info.Context(), payload)
+		if err != nil {
+			buildErr = err
+			return nil
+		}
+		return val
+	})
+	global.Set("goBuild", fn)
+
+	ctx := v8.NewContext(iso, global)
+
+	// Several calls, and several sizes: the consumer's crash needed more than
+	// one call on one engine to show up.
+	for i, n := range []int{1, 10, 100, 1000, 7} {
+		out, err := ctx.RunScript(
+			"(() => { const v = goBuild("+strconv.Itoa(n)+");"+
+				" return v.length + ':' + v[v.length - 1].s; })()",
+			"gav8_callback.js")
+		fatalIf(t, err)
+		fatalIf(t, buildErr)
+		want := strconv.Itoa(n) + ":row-" + strconv.Itoa(n-1)
+		if got := out.String(); got != want {
+			t.Fatalf("call %d built %q, want %q", i, got, want)
+		}
+		out.Release()
+	}
+
+	out, err := ctx.RunScript("goBuild(3).length + ':' + goBuild(4).length", "gav8_callback.js")
+	fatalIf(t, err)
+	fatalIf(t, buildErr)
+	if got := out.String(); got != "3:4" {
+		t.Errorf("two builds in one script = %q, want %q", got, "3:4")
+	}
+	out.Release()
+
+	// JS -> Go -> JS -> Go -> build, then unwind through all of it.
+	out, err = ctx.RunScript("goBuild(-1).length + ':' + goBuild(-1)[2].s", "gav8_callback.js")
+	fatalIf(t, err)
+	fatalIf(t, buildErr)
+	if got := out.String(); got != "3:row-2" {
+		t.Errorf("build under a nested callback = %q, want %q", got, "3:row-2")
+	}
+	out.Release()
+
+	ctx.Close()
+
+	// The assertion. A leaked isolate entry aborts the process here rather
+	// than failing this test, which is exactly why the test has to exist.
+	iso.Dispose()
+}
+
+/********** the read-cost measurement **********/
+
+// The bulk object constructor produces dictionary-mode objects where
+// JSON.parse produces hidden-class ones, so reading properties out of a built
+// tree costs more. How much more is the whole trade: at the measured ratio the
+// build saving pays for tens of full passes over the data, and an SSR render
+// makes one. A V8 upgrade that makes it materially worse should fail a test
+// rather than quietly slow every page down.
+//
+// Not parallel: it is a timing measurement.
+func TestBuildReadCostRatio(t *testing.T) {
+	iso := v8.NewIsolate()
+	defer iso.Dispose()
+	ctx := v8.NewContext(iso)
+	defer ctx.Close()
+
+	const cols, rows, scans, reps = 20, 1000, 100, 5
+	keys, data := benchRows(cols, rows)
+
+	p := buildProgram(keys, data)
+	defer p.release()
+	built, err := v8.BuildValue(ctx, p.payload())
+	fatalIf(t, err)
+	defer built.Release()
+
+	parsed, err := v8.JSONParse(ctx, benchJSON(keys, data))
+	fatalIf(t, err)
+	defer parsed.Release()
+
+	fatalIf(t, ctx.Global().Set("built", built))
+	fatalIf(t, ctx.Global().Set("parsed", parsed))
+
+	// Two separate Function objects over the same source. One shared function
+	// would see both object kinds at the same property loads, go megamorphic,
+	// and mis-measure both arms — which is the likeliest explanation for the
+	// 11x this was once reported as.
+	setup := `globalThis.scanBuilt = new Function('rows', SRC);
+	          globalThis.scanParsed = new Function('rows', SRC);`
+	src := "let s = 0;" +
+		"for (let n = 0; n < " + strconv.Itoa(scans) + "; n++)" +
+		"  for (let i = 0; i < rows.length; i++) {" +
+		"    const r = rows[i]; s += r.col_0 + r.col_3 + r.col_6;" +
+		"  }" +
+		"return s;"
+	_, err = ctx.RunScript("const SRC = "+strconv.Quote(src)+";"+setup, "gav8_readcost_setup.js")
+	fatalIf(t, err)
+
+	run := func(expr string) time.Duration {
+		start := time.Now()
+		out, err := ctx.RunScript(expr, "gav8_readcost.js")
+		fatalIf(t, err)
+		_ = out
+		return time.Since(start)
+	}
+
+	// Interleaved, so that anything drifting over the run (GC, thermal, a
+	// background compile) lands on both arms rather than on one.
+	var builtTime, parsedTime time.Duration
+	run("scanBuilt(built)")
+	run("scanParsed(parsed)")
+	for i := 0; i < reps; i++ {
+		builtTime += run("scanBuilt(built)")
+		parsedTime += run("scanParsed(parsed)")
+	}
+
+	ratio := float64(builtTime) / float64(parsedTime)
+	t.Logf("%d scans x %d rows x 3 property loads, %d reps: built %v, parsed %v, ratio %.2fx",
+		scans, rows, reps, builtTime, parsedTime, ratio)
+
+	const limit = 4.0
+	if ratio > limit {
+		t.Errorf("reads from bulk-constructed objects cost %.2fx reads from parsed ones, limit %.1fx; "+
+			"if this is real, the object constructor in gav8_build.cc is no longer the right trade",
+			ratio, limit)
+	}
+}
+
+/********** benchmarks **********/
+
+// buildProgram encodes the SQL-shaped result set from benchRows as a build
+// program: one loop body of cols+2 ops, whatever the row count.
+func buildProgram(keys []string, rows [][]any) *prog {
+	p := &prog{}
+	shape := p.shape(keys...)
+
+	p.mark()
+	p.op(v8.OpRepeat, uint32(len(keys))+2)
+	for c := range keys {
+		switch c % 3 {
+		case 0:
+			p.op(v8.OpInt)
+		case 1:
+			p.op(v8.OpF64)
+		default:
+			p.op(v8.OpStr)
+		}
+	}
+	p.op(v8.OpObj, shape)
+	p.arr()
+	p.end()
+
+	p.dataCount(int32(len(rows)))
+	for _, row := range rows {
+		for _, cell := range row {
+			switch x := cell.(type) {
+			case int32:
+				p.dataInt(int64(x))
+			case float64:
+				p.dataF64(x)
+			default:
+				p.dataStr(x.(string))
+			}
+		}
+	}
+	return p
+}
+
+// BenchmarkBuildValue is the arm that matters: Go data in, a JS value out,
+// nothing serialized and one crossing. It stages the payload inside the timed
+// loop, reusing the buffers the way a pooled producer would, so it carries the
+// same Go-side per-value work the BatchScope arm does.
+func BenchmarkBuildValue(b *testing.B) {
+	for _, size := range benchSizes {
+		b.Run(size.name, func(b *testing.B) {
+			iso := v8.NewIsolate()
+			defer iso.Dispose()
+			ctx := v8.NewContext(iso)
+			defer ctx.Close()
+
+			keys, rows := benchRows(size.cols, size.rows)
+			seed := buildProgram(keys, rows)
+			defer seed.release()
+
+			// Steady state: ops, shapes and key spans are fixed by the type,
+			// so a producer computes them once. Everything downstream of the
+			// key region is refilled per result set.
+			payload := seed.payload()
+			buf := make([]byte, 0, len(seed.buf))
+			spans := make([]v8.Span, 0, len(seed.keySpans)+len(seed.valSpans))
+			nums := make([]int64, 0, len(seed.nums))
+			floats := make([]float64, 0, len(seed.floats))
+
+			b.ResetTimer()
+			for range b.N {
+				buf = buf[:0]
+				spans = spans[:0]
+				nums = nums[:0]
+				floats = floats[:0]
+				for _, s := range seed.keySpans {
+					// Key bytes are staged once, at the front of the buffer.
+					off := uint32(len(buf))
+					buf = append(buf, seed.buf[s.Off:s.Off+s.Len]...)
+					spans = append(spans, v8.Span{Off: off, Len: s.Len})
+				}
+				for _, row := range rows {
+					for _, cell := range row {
+						switch x := cell.(type) {
+						case int32:
+							nums = append(nums, int64(x))
+						case float64:
+							floats = append(floats, x)
+						default:
+							s := x.(string)
+							off := uint32(len(buf))
+							buf = append(buf, s...)
+							spans = append(spans, v8.Span{Off: off, Len: uint32(len(s))})
+						}
+					}
+				}
+				payload.Buf = buf
+				payload.Spans = spans
+				payload.Nums = nums
+				payload.Floats = floats
+
+				val, err := v8.BuildValue(ctx, payload)
+				if err != nil {
+					b.Fatal(err)
+				}
+				val.Release()
+			}
+		})
+	}
+}
+
+// BenchmarkBuildValuePrebuilt isolates the crossing and the V8 work from the
+// cost of staging the payload, which is what a producer that already holds its
+// data in this layout would pay.
+func BenchmarkBuildValuePrebuilt(b *testing.B) {
+	for _, size := range benchSizes {
+		b.Run(size.name, func(b *testing.B) {
+			iso := v8.NewIsolate()
+			defer iso.Dispose()
+			ctx := v8.NewContext(iso)
+			defer ctx.Close()
+
+			keys, rows := benchRows(size.cols, size.rows)
+			p := buildProgram(keys, rows)
+			defer p.release()
+			payload := p.payload()
+
+			b.ResetTimer()
+			for range b.N {
+				val, err := v8.BuildValue(ctx, payload)
+				if err != nil {
+					b.Fatal(err)
+				}
+				val.Release()
+			}
+		})
+	}
+}
