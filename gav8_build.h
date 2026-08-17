@@ -99,6 +99,22 @@ typedef enum {
   // times, then continues after them. Bodies may nest. n == 0 skips the body
   // and leaves every other cursor untouched.
   GAV8_OP_REPEAT = 13,
+  // operand: bodyLen. flag = counts[cntCursor++]. Zero pushes null and skips
+  // the body outright, leaving every other cursor untouched; anything non-zero
+  // runs the body, which must push EXACTLY one value. Bodies may nest.
+  //
+  // This is the op a nullable field needs — a *T is null or a value — and no
+  // combination of the others expresses it: OP_REPEAT with a count of 0 or 1
+  // gives "the value or nothing", but OP_OBJ pops a fixed arity from its
+  // shape, so a skipped push does not yield null, it steals the previous
+  // field's value and shifts every field after it.
+  //
+  // The flag rides in counts because it is control flow, like a loop bound,
+  // and reading it there keeps the payload to the same arrays. Only the flag
+  // is consumed on the null path: a producer stages no nums/floats/spans entry
+  // for a value it is not sending, so touching one would desynchronise every
+  // leaf that follows.
+  GAV8_OP_NULLABLE = 14,
 } gav8_op;
 
 // Builds the entire value tree and returns the root as a tracked ValuePtr.
@@ -108,9 +124,10 @@ typedef enum {
 // Fails closed. The op buffer is generated code, but it is also the only thing
 // between a producer bug and an out-of-bounds read of process memory, so every
 // index is checked against its array's length — shape ids, all four cursors,
-// span off+len, ptrs indices, stack depth on each pop, mark balance, and a
-// repeat body running past the end of the buffer. A malformed payload returns
-// an RtnError; it never yields a partially built tree.
+// span off+len, ptrs indices, stack depth on each pop, mark balance, a repeat
+// or nullable body running past the end of the buffer, and a nullable body
+// that does not leave exactly one value. A malformed payload returns an
+// RtnError; it never yields a partially built tree.
 extern RtnValue gav8_build(ContextPtr ctx, const gav8_payload* p);
 
 // gav8_build_args is gav8_build with the payload spread across arguments. It

@@ -69,11 +69,24 @@ const char* validate_payload(const gav8_payload* p) {
   return nullptr;
 }
 
-// One OP_REPEAT in flight: the body to re-run and how many runs are left.
-struct repeat_frame {
-  uint32_t start;
-  uint32_t end;
-  int64_t remaining;
+// One body in flight, either kind. An OP_REPEAT frame carries the body to
+// re-run and how many runs are left; an OP_NULLABLE frame carries what the
+// body must have done to the stack by the time it ends.
+//
+// Both kinds share ONE stack because the two can end on the same word — an
+// OP_NULLABLE whose body is the tail of an OP_REPEAT body does — and the inner
+// one has to close first. Two separate stacks cannot express that ordering.
+struct frame {
+  uint32_t start;  // first word of the body; where a repeat jumps back to
+  uint32_t end;    // one word past the body
+  bool nullable;
+
+  int64_t remaining;  // OP_REPEAT: iterations still to run
+
+  // OP_NULLABLE: the state the body must restore, and the floor it installs.
+  size_t depth;        // value-stack depth on entry; +1 is required on exit
+  size_t nmarks;       // marks.size() on entry; must be equal on exit
+  size_t saved_floor;  // the enclosing floor, reinstated on exit
 };
 
 // builder interprets one op buffer against one payload. It holds the V8 entry
@@ -99,6 +112,15 @@ struct builder : gav8_entry {
 
   // Depths remembered by OP_MARK, innermost last.
   std::vector<size_t> marks;
+
+  // The lowest stack index the current op may pop down to: the entry depth of
+  // the innermost OP_NULLABLE body, or 0 outside one. It is what makes a
+  // nullable body self-contained, which is the property that lets the null path
+  // skip it: a body that reached under its own entry depth — popping an
+  // enclosing OP_MARK, or feeding an OP_OBJ with a value pushed before the
+  // OP_NULLABLE — would build a different tree depending on the flag, and the
+  // exit depth check alone cannot see it (steal one value, push one more).
+  size_t floor = 0;
 
   // Interned keys per shape, filled on first use of that shape. Interning
   // lazily means a shape only reachable through a repeat that runs zero times
@@ -215,14 +237,33 @@ bool builder::intern_shape(uint32_t id) {
 // Runs the program. On success the root is the single value left on the stack.
 bool builder::run() {
   const uint32_t nops = static_cast<uint32_t>(p->nops);
-  std::vector<repeat_frame> frames;
+  std::vector<frame> frames;
   uint32_t pc = 0;
 
   for (;;) {
-    // Close out any repeat bodies that end here, innermost first. A pop leaves
-    // pc at the body's end, which is the op after it, so the outer frame's own
-    // end may land on the same word — hence the loop.
+    // Close out any bodies that end here, innermost first. A pop leaves pc at
+    // the body's end, which is the op after it, so the outer frame's own end
+    // may land on the same word — hence the loop. A repeat that jumps back
+    // ends it: its start is below every open frame's end.
     while (!frames.empty() && pc == frames.back().end) {
+      if (frames.back().nullable) {
+        const frame& f = frames.back();
+        // The one thing an OP_NULLABLE body owes its caller. Zero or two
+        // pushes would shift the enclosing OP_OBJ's operands by one and build
+        // a plausible, wrong tree; the flag path would build the right one.
+        if (stack.size() != f.depth + 1) {
+          return fail("gav8: OP_NULLABLE body left " +
+                      std::to_string(static_cast<int64_t>(stack.size()) -
+                                     static_cast<int64_t>(f.depth)) +
+                      " value(s) on the stack, want exactly 1");
+        }
+        if (marks.size() != f.nmarks) {
+          return fail("gav8: OP_NULLABLE body did not balance its OP_MARK(s)");
+        }
+        floor = f.saved_floor;
+        frames.pop_back();
+        continue;
+      }
       if (--frames.back().remaining > 0) {
         pc = frames.back().start;
       } else {
@@ -342,6 +383,11 @@ bool builder::run() {
         if (!marks.empty() && base < marks.back()) {
           return fail("gav8: OP_OBJ pops past an OP_MARK");
         }
+        // Same theft, out through an OP_NULLABLE body instead: the stolen value
+        // was pushed before the flag was read, so it exists on one path only.
+        if (base < floor) {
+          return fail("gav8: OP_OBJ pops out of an OP_NULLABLE body");
+        }
         if (!ensure_obj_proto()) {
           return fail("gav8: could not resolve Object.prototype");
         }
@@ -372,6 +418,11 @@ bool builder::run() {
           return fail("gav8: OP_ARR_FROM_MARK without an OP_MARK");
         }
         const size_t base = marks.back();
+        if (base < floor) {
+          return fail(
+              "gav8: OP_ARR_FROM_MARK closes an OP_MARK from outside the "
+              "OP_NULLABLE body");
+        }
         marks.pop_back();
         if (base > stack.size()) {
           return fail("gav8: OP_ARR_FROM_MARK with a mark above the stack top");
@@ -416,13 +467,49 @@ bool builder::run() {
           pc = static_cast<uint32_t>(end);
           break;
         }
-        frames.push_back({pc, static_cast<uint32_t>(end), n});
+        frames.push_back({pc, static_cast<uint32_t>(end), false, n, 0, 0, 0});
+        break;
+      }
+
+      case GAV8_OP_NULLABLE: {
+        if (pc >= nops) {
+          return fail("gav8: OP_NULLABLE without a body length");
+        }
+        const uint32_t body_len = p->ops[pc++];
+        // A body that pushes nothing cannot satisfy the exactly-one rule, so an
+        // empty one is a producer bug rather than a null of some other kind.
+        if (body_len == 0) {
+          return fail("gav8: OP_NULLABLE with an empty body");
+        }
+        const uint64_t end = static_cast<uint64_t>(pc) + body_len;
+        if (end > static_cast<uint64_t>(nops)) {
+          return fail(
+              "gav8: OP_NULLABLE body runs past the end of the op buffer");
+        }
+        // Both checks above precede the count, so a malformed op does not half
+        // consume the payload — same order as OP_REPEAT.
+        if (cnt_cur >= static_cast<uint32_t>(p->ncounts)) {
+          return fail("gav8: counts cursor out of range at OP_NULLABLE");
+        }
+        // Only zero is null; the flag is a present/absent bit, not a length.
+        if (p->counts[cnt_cur++] == 0) {
+          // Skip the body outright, exactly as an n == 0 OP_REPEAT does. No
+          // other cursor moves, because the producer staged nothing here.
+          stack.push_back(Null(iso));
+          pc = static_cast<uint32_t>(end);
+          break;
+        }
+        frames.push_back({pc, static_cast<uint32_t>(end), true, 0, stack.size(),
+                          marks.size(), floor});
+        floor = stack.size();
         break;
       }
 
       case GAV8_OP_END: {
         if (!frames.empty()) {
-          return fail("gav8: OP_END inside an OP_REPEAT body");
+          return fail(frames.back().nullable
+                          ? "gav8: OP_END inside an OP_NULLABLE body"
+                          : "gav8: OP_END inside an OP_REPEAT body");
         }
         if (!marks.empty()) {
           return fail("gav8: OP_END with " + std::to_string(marks.size()) +

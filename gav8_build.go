@@ -80,6 +80,25 @@ const (
 	// cursor untouched, so an empty slice costs nothing. The body may not be
 	// empty.
 	OpRepeat uint32 = C.GAV8_OP_REPEAT
+	// OpNullable is followed by a body length in words. It takes a flag from
+	// the next Counts entry — only zero is null, any other value is present —
+	// and either pushes null and skips the body, or runs the body, which must
+	// push exactly one value.
+	//
+	// This is how a *T is encoded, and nothing else expresses it: OpRepeat with
+	// a count of 0 or 1 gives "the value or nothing", but OpObj pops a fixed
+	// arity from its shape, so a skipped push does not yield null — it takes
+	// the previous field's value and shifts every field after it.
+	//
+	// On the null path only the flag is consumed. Nums, Floats, Spans and the
+	// rest of Counts stay where they were, because a producer stages no payload
+	// for a value it is not sending; consuming one would desynchronise every
+	// leaf that follows. The body must also be self-contained: it may nest
+	// anything, including OpRepeat, OpObj and further OpNullable, but it may
+	// not pop values pushed before it or close an OpMark from outside it. Both
+	// are errors, since either would make the tree depend on the flag in a way
+	// the generator did not write.
+	OpNullable uint32 = C.GAV8_OP_NULLABLE
 )
 
 // Span locates one string or byte-slice leaf, either in [Payload.Buf] or
@@ -131,8 +150,9 @@ type Payload struct {
 	Nums []int64
 	// Floats holds the float64 scalars, positionally.
 	Floats []float64
-	// Counts holds the length of each variable-length region, in emission
-	// order — one entry per OpRepeat executed.
+	// Counts holds the program's control-flow values in execution order: one
+	// entry per OpRepeat executed, holding the length of that region, and one
+	// per OpNullable executed, holding its present/absent flag.
 	Counts []int32
 }
 

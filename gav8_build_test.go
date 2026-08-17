@@ -117,6 +117,16 @@ func (p *prog) dataInt(v int64)   { p.nums = append(p.nums, v) }
 func (p *prog) dataF64(v float64) { p.floats = append(p.floats, v) }
 func (p *prog) dataCount(n int32) { p.counts = append(p.counts, n) }
 
+// dataFlag stages one OpNullable flag. It rides in Counts next to the repeat
+// bounds because both are control flow, read in execution order.
+func (p *prog) dataFlag(present bool) {
+	if present {
+		p.dataCount(1)
+	} else {
+		p.dataCount(0)
+	}
+}
+
 // --- op and data together, for straight-line programs ---
 
 func (p *prog) null()        { p.op(v8.OpNull) }
@@ -415,6 +425,174 @@ func TestBuildRoundTrip(t *testing.T) {
 			expr: "JSON.stringify(v)",
 			want: "[42]",
 		},
+		{
+			// OpNullable, the *T encoding: the flag says which of the two
+			// happens, and the payload only carries what it needs.
+			name: "nullable primitive present",
+			build: func(p *prog) {
+				p.op(v8.OpNullable, 1)
+				p.op(v8.OpInt)
+				p.end()
+
+				p.dataFlag(true)
+				p.dataInt(42)
+			},
+			expr: "typeof v + ':' + v",
+			want: "number:42",
+		},
+		{
+			// Nothing at all in Nums: a producer stages no payload for a value
+			// it is not sending, so the null path must not look for one.
+			name: "nullable primitive absent",
+			build: func(p *prog) {
+				p.op(v8.OpNullable, 1)
+				p.op(v8.OpInt)
+				p.end()
+
+				p.dataFlag(false)
+			},
+			expr: "v === null ? 'null' : typeof v + ':' + v",
+			want: "null",
+		},
+		{
+			name: "nullable string absent",
+			build: func(p *prog) {
+				p.op(v8.OpNullable, 1)
+				p.op(v8.OpStr)
+				p.end()
+
+				p.dataFlag(false)
+			},
+			expr: "v === null ? 'null' : typeof v",
+			want: "null",
+		},
+		{
+			// Only zero is null. The flag is a present bit, not a count, and
+			// nothing about it is a length.
+			name: "nullable flag other than 1 is present",
+			build: func(p *prog) {
+				p.op(v8.OpNullable, 1)
+				p.op(v8.OpStr)
+				p.end()
+
+				p.dataCount(-1)
+				p.dataStr("present")
+			},
+			expr: "typeof v + ':' + v",
+			want: "string:present",
+		},
+		{
+			name: "nullable struct present",
+			build: func(p *prog) {
+				s := p.shape("id", "name")
+				p.op(v8.OpNullable, 4)
+				p.op(v8.OpInt)
+				p.op(v8.OpStr)
+				p.op(v8.OpObj, s)
+				p.end()
+
+				p.dataFlag(true)
+				p.dataInt(3)
+				p.dataStr("three")
+			},
+			expr: "JSON.stringify(v)",
+			want: `{"id":3,"name":"three"}`,
+		},
+		{
+			name: "nullable struct absent",
+			build: func(p *prog) {
+				s := p.shape("id", "name")
+				p.op(v8.OpNullable, 4)
+				p.op(v8.OpInt)
+				p.op(v8.OpStr)
+				p.op(v8.OpObj, s)
+				p.end()
+
+				p.dataFlag(false)
+			},
+			expr: "JSON.stringify(v)",
+			want: "null",
+		},
+		{
+			name: "nullable array present",
+			build: func(p *prog) {
+				p.op(v8.OpNullable, 5)
+				p.op(v8.OpMark)
+				p.op(v8.OpRepeat, 1)
+				p.op(v8.OpInt)
+				p.op(v8.OpArrFromMark)
+				p.end()
+
+				p.dataFlag(true)
+				p.dataCount(3)
+				p.dataInt(1)
+				p.dataInt(2)
+				p.dataInt(3)
+			},
+			expr: "JSON.stringify(v)",
+			want: "[1,2,3]",
+		},
+		{
+			// The skipped body holds an OpRepeat, whose count is also not
+			// staged: the null path may not read Counts past its own flag.
+			name: "nullable array absent",
+			build: func(p *prog) {
+				p.op(v8.OpNullable, 5)
+				p.op(v8.OpMark)
+				p.op(v8.OpRepeat, 1)
+				p.op(v8.OpInt)
+				p.op(v8.OpArrFromMark)
+				p.end()
+
+				p.dataFlag(false)
+			},
+			expr: "JSON.stringify(v)",
+			want: "null",
+		},
+		{
+			// The spec's nesting case: OpNullable inside OpRepeat inside
+			// OpNullable. The inner flag is read once per iteration, so the
+			// flags interleave with the loop's own count.
+			name: "nullable inside repeat inside nullable",
+			build: func(p *prog) {
+				p.op(v8.OpNullable, 7)
+				p.op(v8.OpMark)
+				p.op(v8.OpRepeat, 3)
+				p.op(v8.OpNullable, 1)
+				p.op(v8.OpStr)
+				p.op(v8.OpArrFromMark)
+				p.end()
+
+				p.dataFlag(true)
+				p.dataCount(3)
+				p.dataFlag(true)
+				p.dataStr("a")
+				p.dataFlag(false)
+				p.dataFlag(true)
+				p.dataStr("b")
+			},
+			expr: "JSON.stringify(v)",
+			want: `["a",null,"b"]`,
+		},
+		{
+			// The same program with the outer flag clear: one Counts entry for
+			// the whole tree, and neither the loop count nor any inner flag is
+			// read.
+			name: "nullable inside repeat inside nullable, outer absent",
+			build: func(p *prog) {
+				p.op(v8.OpNullable, 7)
+				p.op(v8.OpMark)
+				p.op(v8.OpRepeat, 3)
+				p.op(v8.OpNullable, 1)
+				p.op(v8.OpStr)
+				p.op(v8.OpArrFromMark)
+				p.end()
+
+				p.dataFlag(false)
+			},
+			expr: "JSON.stringify(v)",
+			want: "null",
+		},
 	}
 
 	for _, tt := range tests {
@@ -429,6 +607,100 @@ func TestBuildRoundTrip(t *testing.T) {
 			}
 		})
 	}
+}
+
+// The failure OP_NULLABLE's skip rule exists to prevent, and the one a shallow
+// test cannot see. A producer stages NOTHING for a nil value, so if the null
+// path consumed an entry from Nums, Floats, Spans or Counts — which is what an
+// implementation that runs the body and discards its result does, and what one
+// that "advances past the body's data" does — then every leaf AFTER the null
+// reads its neighbour's value. The nullable field itself still reads null, and
+// a test that asserts only that passes while the rest of the row is garbage.
+//
+// So the assertion is on the leaves that follow. The nullable body consumes one
+// entry from all four arrays, and the six leaves after it read all four again,
+// so a leak from any one of them either shifts a value or runs a cursor off the
+// end of its array.
+func TestBuildNullableCursorInvariance(t *testing.T) {
+	t.Parallel()
+	iso := v8.NewIsolate()
+	defer iso.Dispose()
+	ctx := v8.NewContext(iso)
+	defer ctx.Close()
+
+	// The program, identical for both cases: a row whose second field is a
+	// pointer to a struct that itself holds an int, a float and a slice of
+	// strings, followed by leaves reading Nums, Floats, Spans and Counts again.
+	emit := func(p *prog) {
+		row := p.shape("lead", "opt", "num", "flt", "str", "list")
+		opt := p.shape("n", "f", "tags")
+
+		p.op(v8.OpInt) // lead: Nums
+		p.op(v8.OpNullable, 9)
+		p.op(v8.OpInt)  //   opt.n:    Nums
+		p.op(v8.OpF64)  //   opt.f:    Floats
+		p.op(v8.OpMark) //   opt.tags:
+		p.op(v8.OpRepeat, 1)
+		p.op(v8.OpStr) //             Spans, and Counts for the bound
+		p.op(v8.OpArrFromMark)
+		p.op(v8.OpObj, opt)
+		p.op(v8.OpInt)  // num: Nums
+		p.op(v8.OpF64)  // flt: Floats
+		p.op(v8.OpStr)  // str: Spans
+		p.op(v8.OpMark) // list:
+		p.op(v8.OpRepeat, 1)
+		p.op(v8.OpStr) //      Spans, and Counts for the bound
+		p.op(v8.OpArrFromMark)
+		p.op(v8.OpObj, row)
+		p.end()
+	}
+
+	// The data for those trailing leaves, the same in both cases. Whether they
+	// decode to this is the whole test.
+	tail := func(p *prog) {
+		p.dataInt(22)
+		p.dataF64(0.25)
+		p.dataStr("after")
+		p.dataCount(2)
+		p.dataStr("x")
+		p.dataStr("y")
+	}
+	const tailJSON = `"num":22,"flt":0.25,"str":"after","list":["x","y"]}`
+
+	t.Run("null", func(t *testing.T) {
+		p := &prog{}
+		defer p.release()
+		emit(p)
+		p.dataInt(11)
+		p.dataFlag(false)
+		tail(p)
+
+		// Nums is [11, 22]: reading one for the skipped body would make num
+		// undefined, not merely wrong.
+		want := `{"lead":11,"opt":null,` + tailJSON
+		if got := eval(t, ctx, p.build(t, ctx), "JSON.stringify(v)"); got != want {
+			t.Errorf("tree with a null nullable = %s, want %s", got, want)
+		}
+	})
+
+	t.Run("present", func(t *testing.T) {
+		p := &prog{}
+		defer p.release()
+		emit(p)
+		p.dataInt(11)
+		p.dataFlag(true)
+		p.dataInt(7)   // opt.n
+		p.dataF64(1.5) // opt.f
+		p.dataCount(2) // opt.tags
+		p.dataStr("t1")
+		p.dataStr("t2")
+		tail(p)
+
+		want := `{"lead":11,"opt":{"n":7,"f":1.5,"tags":["t1","t2"]},` + tailJSON
+		if got := eval(t, ctx, p.build(t, ctx), "JSON.stringify(v)"); got != want {
+			t.Errorf("tree with the nullable present = %s, want %s", got, want)
+		}
+	})
 }
 
 // A producer stages small leaves and pins large ones, against a threshold, so
@@ -675,6 +947,11 @@ func TestBuildNoPerNodeTracking(t *testing.T) {
 // validates this one without restating any of them. Key order is compared as
 // well as values: two objects can hold the same properties and still not be
 // the same object to a consumer that iterates them.
+//
+// One row field is nullable and null on a third of the rows, which makes this
+// the widest check of the OpNullable skip there is: 200 iterations of a body
+// whose staged payload shifts under every later leaf whenever a flag is clear,
+// compared against an implementation that has no flags at all.
 func TestBuildMatchesBatchScope(t *testing.T) {
 	t.Parallel()
 	iso := v8.NewIsolate()
@@ -687,14 +964,19 @@ func TestBuildMatchesBatchScope(t *testing.T) {
 	// --- the same tree through the op-buffer builder ---
 	p := &prog{}
 	defer p.release()
-	rowShape := p.shape("id", "name", "score", "tags", "meta")
+	rowShape := p.shape("id", "name", "score", "nick", "tags", "meta")
 	metaShape := p.shape("live", "note")
 
 	p.mark()
-	p.op(v8.OpRepeat, 14)
-	p.op(v8.OpInt)  // id
-	p.op(v8.OpStr)  // name
-	p.op(v8.OpF64)  // score
+	p.op(v8.OpRepeat, 17)
+	p.op(v8.OpInt) // id
+	p.op(v8.OpStr) // name
+	p.op(v8.OpF64) // score
+	// nick is a *string, present on two rows in three. Its flag is read once
+	// per iteration, so the flags interleave with the loop's own count and the
+	// staged strings shift under every leaf after them on any row that is null.
+	p.op(v8.OpNullable, 1)
+	p.op(v8.OpStr)
 	p.op(v8.OpMark) // tags
 	p.op(v8.OpStr)
 	p.op(v8.OpStr)
@@ -707,11 +989,17 @@ func TestBuildMatchesBatchScope(t *testing.T) {
 	p.arr()
 	p.end()
 
+	hasNick := func(i int) bool { return i%3 != 0 }
+
 	p.dataCount(rows)
 	for i := 0; i < rows; i++ {
 		p.dataInt(int64(i))
 		p.dataStr("name-" + strconv.Itoa(i))
 		p.dataF64(float64(i) / 7)
+		p.dataFlag(hasNick(i))
+		if hasNick(i) {
+			p.dataStr("nick-" + strconv.Itoa(i))
+		}
 		p.dataStr("tag-a-" + strconv.Itoa(i))
 		p.dataPinStr("tag-b-" + strconv.Itoa(i))
 		p.dataInt(int64(i % 2))
@@ -722,7 +1010,7 @@ func TestBuildMatchesBatchScope(t *testing.T) {
 
 	// --- and through the per-node scope API ---
 	s := v8.NewBatchScope(ctx)
-	rowShapeV1 := s.Shape([]string{"id", "name", "score", "tags", "meta"})
+	rowShapeV1 := s.Shape([]string{"id", "name", "score", "nick", "tags", "meta"})
 	metaShapeV1 := s.Shape([]string{"live", "note"})
 	elems := make([]v8.LocalRef, 0, rows*2)
 	for i := 0; i < rows; i++ {
@@ -734,10 +1022,15 @@ func TestBuildMatchesBatchScope(t *testing.T) {
 			s.Bool(i%2 == 1),
 			s.String("note " + strconv.Itoa(i)),
 		})
+		nick := s.Null()
+		if hasNick(i) {
+			nick = s.String("nick-" + strconv.Itoa(i))
+		}
 		elems = append(elems, s.Object(rowShapeV1, []v8.LocalRef{
 			s.Int32(int32(i)),
 			s.String("name-" + strconv.Itoa(i)),
 			s.Float64(float64(i) / 7),
+			nick,
 			tags,
 			meta,
 		}), s.Null())
@@ -919,6 +1212,111 @@ func TestBuildMalformed(t *testing.T) {
 			p:    v8.Payload{Ops: []uint32{v8.OpRepeat, 1, v8.OpNull, v8.OpEnd}},
 		},
 		{
+			name: "OP_NULLABLE truncated before its body length",
+			p:    v8.Payload{Ops: []uint32{v8.OpNullable}, Counts: []int32{1}},
+		},
+		{
+			// A body that pushes nothing cannot satisfy exactly-one, so an
+			// empty one is a producer bug however the flag reads.
+			name: "nullable with an empty body",
+			p: v8.Payload{
+				Ops:    []uint32{v8.OpNullable, 0, v8.OpNull, v8.OpEnd},
+				Counts: []int32{1},
+			},
+		},
+		{
+			name: "nullable with an empty body and a clear flag",
+			p: v8.Payload{
+				Ops:    []uint32{v8.OpNullable, 0, v8.OpNull, v8.OpEnd},
+				Counts: []int32{0},
+			},
+		},
+		{
+			name: "nullable body runs past the op buffer",
+			p: v8.Payload{
+				Ops:    []uint32{v8.OpNullable, 99, v8.OpNull, v8.OpEnd},
+				Counts: []int32{1},
+			},
+		},
+		{
+			// Rejected before the flag is read, so the body length is checked
+			// even for a null — a producer bug is a producer bug on both paths.
+			name: "nullable body runs past the op buffer with a clear flag",
+			p: v8.Payload{
+				Ops:    []uint32{v8.OpNullable, 99, v8.OpNull, v8.OpEnd},
+				Counts: []int32{0},
+			},
+		},
+		{
+			name: "counts cursor exhausted at OP_NULLABLE",
+			p:    v8.Payload{Ops: []uint32{v8.OpNullable, 1, v8.OpNull, v8.OpEnd}},
+		},
+		{
+			// The body is a repeat that runs zero times, so it pushes nothing.
+			// Left unchecked the enclosing object would take the field before
+			// it twice and shift everything after — a plausible, wrong tree.
+			name: "nullable body pushes nothing",
+			p: v8.Payload{
+				Ops:    []uint32{v8.OpNullable, 3, v8.OpRepeat, 1, v8.OpInt, v8.OpEnd},
+				Counts: []int32{1, 0},
+				Nums:   []int64{5},
+			},
+		},
+		{
+			name: "nullable body pushes two values",
+			p: v8.Payload{
+				Ops:    []uint32{v8.OpNullable, 2, v8.OpNull, v8.OpNull, v8.OpEnd},
+				Counts: []int32{1},
+			},
+		},
+		{
+			name: "OP_END inside a nullable body",
+			p: v8.Payload{
+				Ops:    []uint32{v8.OpNullable, 2, v8.OpEnd, v8.OpNull, v8.OpEnd},
+				Counts: []int32{1},
+			},
+		},
+		{
+			// An OpMark opened inside the body and left open. It would be an
+			// array boundary on the value path and no boundary at all on the
+			// null path, so the tree would depend on the flag.
+			name: "nullable body leaves an OP_MARK open",
+			p: v8.Payload{
+				Ops:    []uint32{v8.OpNullable, 2, v8.OpMark, v8.OpNull, v8.OpEnd},
+				Counts: []int32{1},
+			},
+		},
+		{
+			// And the mirror: an OpMark from outside, closed inside. On the
+			// null path the array would still be open at OP_END.
+			name: "nullable body closes an outer OP_MARK",
+			p: v8.Payload{
+				Ops:    []uint32{v8.OpMark, v8.OpNull, v8.OpNullable, 1, v8.OpArrFromMark, v8.OpEnd},
+				Counts: []int32{1},
+			},
+		},
+		{
+			// Net +1 on the stack, so the exit depth check passes — and the
+			// object still took a value pushed before the flag was read. Only
+			// the floor sees it.
+			name: "nullable body pops a value pushed outside it",
+			p: v8.Payload{
+				Ops:    []uint32{v8.OpNull, v8.OpNullable, 4, v8.OpNull, v8.OpObj, 0, v8.OpNull, v8.OpEnd},
+				Shapes: twoKeys, Spans: keySpans, KeySpans: 2, Buf: []byte("ab"),
+				Counts: []int32{1},
+			},
+		},
+		{
+			// A nullable body whose end lies outside the repeat body it was
+			// opened in. Nothing reads out of bounds — the repeat frame simply
+			// never retires, and OP_END refuses to run with a frame open.
+			name: "nullable body running out of an enclosing repeat body",
+			p: v8.Payload{
+				Ops:    []uint32{v8.OpMark, v8.OpRepeat, 2, v8.OpNullable, 3, v8.OpNull, v8.OpArrFromMark, v8.OpEnd},
+				Counts: []int32{1, 1},
+			},
+		},
+		{
 			name: "nums cursor exhausted",
 			p:    v8.Payload{Ops: []uint32{v8.OpInt, v8.OpEnd}},
 		},
@@ -1060,6 +1458,8 @@ func FuzzBuildValue(f *testing.F) {
 	f.Add([]byte{11, 8, 12, 0})
 	f.Add([]byte{13, 4, 6, 8, 10, 0, 12, 0})
 	f.Add([]byte{10, 0, 0, 255, 255, 255, 255})
+	f.Add([]byte{14, 1, 8, 0})
+	f.Add([]byte{14, 5, 11, 13, 1, 6, 12, 0})
 
 	iso := v8.NewIsolate()
 	f.Cleanup(iso.Dispose)
