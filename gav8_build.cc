@@ -69,21 +69,48 @@ const char* validate_payload(const gav8_payload* p) {
   return nullptr;
 }
 
-// One body in flight, either kind. An OP_REPEAT frame carries the body to
-// re-run and how many runs are left; an OP_NULLABLE frame carries what the
-// body must have done to the stack by the time it ends.
+// Which op opened a frame. The two conditional kinds are one mechanism: they
+// share every check below and differ only in the value their absent branch
+// pushes, so they are told apart here to name the right op in an error.
+enum frame_kind : uint8_t {
+  FRAME_REPEAT,
+  FRAME_NULLABLE,
+  FRAME_OPTIONAL,
+};
+
+// The op that opened a frame, for error messages.
+const char* frame_op_name(frame_kind k) {
+  switch (k) {
+    case FRAME_NULLABLE:
+      return "OP_NULLABLE";
+    case FRAME_OPTIONAL:
+      return "OP_OPTIONAL";
+    default:
+      return "OP_REPEAT";
+  }
+}
+
+// A conditional body's floor is installed by either op, so a message about
+// escaping one has to name both.
+const char* const kConditionalBody = "an OP_NULLABLE/OP_OPTIONAL body";
+
+// One body in flight, any kind. An OP_REPEAT frame carries the body to re-run
+// and how many runs are left; an OP_NULLABLE or OP_OPTIONAL frame carries what
+// the body must have done to the stack by the time it ends.
 //
-// Both kinds share ONE stack because the two can end on the same word — an
-// OP_NULLABLE whose body is the tail of an OP_REPEAT body does — and the inner
-// one has to close first. Two separate stacks cannot express that ordering.
+// All kinds share ONE stack because two frames can end on the same word — a
+// conditional whose body is the tail of an OP_REPEAT body does, and so does a
+// nullable body ending where an enclosing optional body ends — and the inner
+// one has to close first. Separate stacks cannot express that ordering.
 struct frame {
   uint32_t start;  // first word of the body; where a repeat jumps back to
   uint32_t end;    // one word past the body
-  bool nullable;
+  frame_kind kind;
 
   int64_t remaining;  // OP_REPEAT: iterations still to run
 
-  // OP_NULLABLE: the state the body must restore, and the floor it installs.
+  // The conditional kinds: the state the body must restore, and the floor it
+  // installs.
   size_t depth;        // value-stack depth on entry; +1 is required on exit
   size_t nmarks;       // marks.size() on entry; must be equal on exit
   size_t saved_floor;  // the enclosing floor, reinstated on exit
@@ -100,6 +127,7 @@ struct builder : gav8_entry {
         shape_keys(static_cast<size_t>(payload->nshapes),
                    LocalVector<Name>(c->iso)),
         shape_interned(static_cast<size_t>(payload->nshapes), 0),
+        kept_keys(c->iso),
         span_cur(static_cast<uint32_t>(payload->nkeyspans)) {
     stack.reserve(64);
   }
@@ -114,12 +142,13 @@ struct builder : gav8_entry {
   std::vector<size_t> marks;
 
   // The lowest stack index the current op may pop down to: the entry depth of
-  // the innermost OP_NULLABLE body, or 0 outside one. It is what makes a
-  // nullable body self-contained, which is the property that lets the null path
-  // skip it: a body that reached under its own entry depth — popping an
-  // enclosing OP_MARK, or feeding an OP_OBJ with a value pushed before the
-  // OP_NULLABLE — would build a different tree depending on the flag, and the
-  // exit depth check alone cannot see it (steal one value, push one more).
+  // the innermost conditional body (OP_NULLABLE or OP_OPTIONAL), or 0 outside
+  // one. It is what makes such a body self-contained, which is the property
+  // that lets the absent path skip it: a body that reached under its own entry
+  // depth — popping an enclosing OP_MARK, or feeding an OP_OBJ with a value
+  // pushed before the flag was read — would build a different tree depending
+  // on the flag, and the exit depth check alone cannot see it (steal one
+  // value, push one more).
   size_t floor = 0;
 
   // Interned keys per shape, filled on first use of that shape. Interning
@@ -127,6 +156,14 @@ struct builder : gav8_entry {
   // costs nothing.
   std::vector<LocalVector<Name>> shape_keys;
   std::vector<uint8_t> shape_interned;
+
+  // Scratch for OP_OBJ_OMIT: the subset of a shape's keys whose values
+  // survived. Kept on the builder rather than in the case so that a repeat
+  // building N objects reuses one allocation. The values are compacted in
+  // place on the value stack, so only the keys need somewhere to go — the
+  // shape's own interned vector is shared by every object of that shape and
+  // must not be disturbed.
+  LocalVector<Name> kept_keys;
 
   // Cursors into the payload arrays. They advance implicitly, in the order the
   // producer filled the arrays; the span cursor starts past the key region.
@@ -246,19 +283,21 @@ bool builder::run() {
     // may land on the same word — hence the loop. A repeat that jumps back
     // ends it: its start is below every open frame's end.
     while (!frames.empty() && pc == frames.back().end) {
-      if (frames.back().nullable) {
+      if (frames.back().kind != FRAME_REPEAT) {
         const frame& f = frames.back();
-        // The one thing an OP_NULLABLE body owes its caller. Zero or two
-        // pushes would shift the enclosing OP_OBJ's operands by one and build
-        // a plausible, wrong tree; the flag path would build the right one.
+        const char* name = frame_op_name(f.kind);
+        // The one thing a conditional body owes its caller. Zero or two pushes
+        // would shift the enclosing OP_OBJ's operands by one and build a
+        // plausible, wrong tree; the flag path would build the right one.
         if (stack.size() != f.depth + 1) {
-          return fail("gav8: OP_NULLABLE body left " +
+          return fail(std::string("gav8: ") + name + " body left " +
                       std::to_string(static_cast<int64_t>(stack.size()) -
                                      static_cast<int64_t>(f.depth)) +
                       " value(s) on the stack, want exactly 1");
         }
         if (marks.size() != f.nmarks) {
-          return fail("gav8: OP_NULLABLE body did not balance its OP_MARK(s)");
+          return fail(std::string("gav8: ") + name +
+                      " body did not balance its OP_MARK(s)");
         }
         floor = f.saved_floor;
         frames.pop_back();
@@ -383,10 +422,11 @@ bool builder::run() {
         if (!marks.empty() && base < marks.back()) {
           return fail("gav8: OP_OBJ pops past an OP_MARK");
         }
-        // Same theft, out through an OP_NULLABLE body instead: the stolen value
+        // Same theft, out through a conditional body instead: the stolen value
         // was pushed before the flag was read, so it exists on one path only.
         if (base < floor) {
-          return fail("gav8: OP_OBJ pops out of an OP_NULLABLE body");
+          return fail(std::string("gav8: OP_OBJ pops out of ") +
+                      kConditionalBody);
         }
         if (!ensure_obj_proto()) {
           return fail("gav8: could not resolve Object.prototype");
@@ -409,6 +449,88 @@ bool builder::run() {
         break;
       }
 
+      // OP_OBJ, minus the pairs whose value is undefined. It pops the same
+      // fixed arity from the same shape — the program is still O(type), and a
+      // producer still pushes something for every field — and the key set is
+      // decided by the values rather than by the shape.
+      case GAV8_OP_OBJ_OMIT: {
+        if (pc >= nops) {
+          return fail("gav8: OP_OBJ_OMIT without a shape id");
+        }
+        const uint32_t id = p->ops[pc++];
+        if (!intern_shape(id)) {
+          return false;
+        }
+        LocalVector<Name>& names = shape_keys[id];
+        const size_t n = names.size();
+        if (n == 0) {
+          stack.push_back(Object::New(iso));
+          break;
+        }
+        if (stack.size() < n) {
+          return fail("gav8: stack underflow at OP_OBJ_OMIT");
+        }
+        const size_t base = stack.size() - n;
+        if (!marks.empty() && base < marks.back()) {
+          return fail("gav8: OP_OBJ_OMIT pops past an OP_MARK");
+        }
+        if (base < floor) {
+          return fail(std::string("gav8: OP_OBJ_OMIT pops out of ") +
+                      kConditionalBody);
+        }
+        if (!ensure_obj_proto()) {
+          return fail("gav8: could not resolve Object.prototype");
+        }
+
+        // Find the first omitted field. Undefined is the one sentinel, and no
+        // leaf op produces one by accident: OP_UNDEF and an absent OP_OPTIONAL
+        // are the only two ways to get one, and inside this shape both mean
+        // exactly this.
+        size_t first_gap = 0;
+        while (first_gap < n && !stack[base + first_gap]->IsUndefined()) {
+          first_gap++;
+        }
+
+        Local<Object> obj;
+        if (first_gap == n) {
+          // Nothing omitted, which is the common case: a struct with optional
+          // fields still arrives with all of them filled most of the time. It
+          // IS an OP_OBJ, so it takes OP_OBJ's path exactly — the shape's own
+          // interned key array, no scratch and no compaction — and the whole
+          // difference between the two ops on that data is the scan above.
+          obj =
+              Object::New(iso, obj_proto, names.data(), stack.data() + base, n);
+        } else {
+          // Compact the survivors down over the popped region and collect
+          // their keys, both in shape order, so the bulk constructor gets the
+          // two contiguous arrays it wants. Values move in place; keys cannot,
+          // because the shape's interned array is shared by every object of
+          // that shape. Everything before the first gap is already in place.
+          kept_keys.clear();
+          kept_keys.insert(kept_keys.end(), names.begin(),
+                           names.begin() + first_gap);
+          size_t kept = first_gap;
+          for (size_t i = first_gap + 1; i < n; i++) {
+            const Local<Value> v = stack[base + i];
+            if (v->IsUndefined()) {
+              continue;
+            }
+            stack[base + kept] = v;
+            kept_keys.push_back(names[i]);
+            kept++;
+          }
+          // Every field absent. A struct whose optional fields are all empty
+          // is an ordinary payload, not an edge case, and {} is what
+          // JSON.parse would give for the same data.
+          obj = kept == 0 ? Object::New(iso)
+                          : Object::New(iso, obj_proto, kept_keys.data(),
+                                        stack.data() + base, kept);
+        }
+        stack[base] = obj;
+        stack.resize(base + 1);
+        break;
+      }
+
       case GAV8_OP_MARK:
         marks.push_back(stack.size());
         break;
@@ -420,8 +542,9 @@ bool builder::run() {
         const size_t base = marks.back();
         if (base < floor) {
           return fail(
-              "gav8: OP_ARR_FROM_MARK closes an OP_MARK from outside the "
-              "OP_NULLABLE body");
+              std::string(
+                  "gav8: OP_ARR_FROM_MARK closes an OP_MARK from outside ") +
+              kConditionalBody);
         }
         marks.pop_back();
         if (base > stack.size()) {
@@ -467,49 +590,60 @@ bool builder::run() {
           pc = static_cast<uint32_t>(end);
           break;
         }
-        frames.push_back({pc, static_cast<uint32_t>(end), false, n, 0, 0, 0});
+        frames.push_back(
+            {pc, static_cast<uint32_t>(end), FRAME_REPEAT, n, 0, 0, 0});
         break;
       }
 
-      case GAV8_OP_NULLABLE: {
+      // One implementation, two absent values. OP_OPTIONAL is OP_NULLABLE with
+      // undefined in place of null, and everything else about them — the frame,
+      // the body-length checks, the skip rule, the exactly-one-value contract —
+      // is the same, so they share it rather than being kept in step by hand.
+      case GAV8_OP_NULLABLE:
+      case GAV8_OP_OPTIONAL: {
+        const bool nullable = op == GAV8_OP_NULLABLE;
+        const char* name = nullable ? "OP_NULLABLE" : "OP_OPTIONAL";
         if (pc >= nops) {
-          return fail("gav8: OP_NULLABLE without a body length");
+          return fail(std::string("gav8: ") + name + " without a body length");
         }
         const uint32_t body_len = p->ops[pc++];
         // A body that pushes nothing cannot satisfy the exactly-one rule, so an
-        // empty one is a producer bug rather than a null of some other kind.
+        // empty one is a producer bug rather than an absent value of some other
+        // kind.
         if (body_len == 0) {
-          return fail("gav8: OP_NULLABLE with an empty body");
+          return fail(std::string("gav8: ") + name + " with an empty body");
         }
         const uint64_t end = static_cast<uint64_t>(pc) + body_len;
         if (end > static_cast<uint64_t>(nops)) {
-          return fail(
-              "gav8: OP_NULLABLE body runs past the end of the op buffer");
+          return fail(std::string("gav8: ") + name +
+                      " body runs past the end of the op buffer");
         }
         // Both checks above precede the count, so a malformed op does not half
         // consume the payload — same order as OP_REPEAT.
         if (cnt_cur >= static_cast<uint32_t>(p->ncounts)) {
-          return fail("gav8: counts cursor out of range at OP_NULLABLE");
+          return fail(std::string("gav8: counts cursor out of range at ") +
+                      name);
         }
-        // Only zero is null; the flag is a present/absent bit, not a length.
+        // Only zero is absent; the flag is a present/absent bit, not a length.
         if (p->counts[cnt_cur++] == 0) {
           // Skip the body outright, exactly as an n == 0 OP_REPEAT does. No
           // other cursor moves, because the producer staged nothing here.
-          stack.push_back(Null(iso));
+          stack.push_back(nullable ? Local<Primitive>(Null(iso))
+                                   : Local<Primitive>(Undefined(iso)));
           pc = static_cast<uint32_t>(end);
           break;
         }
-        frames.push_back({pc, static_cast<uint32_t>(end), true, 0, stack.size(),
-                          marks.size(), floor});
+        frames.push_back({pc, static_cast<uint32_t>(end),
+                          nullable ? FRAME_NULLABLE : FRAME_OPTIONAL, 0,
+                          stack.size(), marks.size(), floor});
         floor = stack.size();
         break;
       }
 
       case GAV8_OP_END: {
         if (!frames.empty()) {
-          return fail(frames.back().nullable
-                          ? "gav8: OP_END inside an OP_NULLABLE body"
-                          : "gav8: OP_END inside an OP_REPEAT body");
+          return fail(std::string("gav8: OP_END inside an ") +
+                      frame_op_name(frames.back().kind) + " body");
         }
         if (!marks.empty()) {
           return fail("gav8: OP_END with " + std::to_string(marks.size()) +

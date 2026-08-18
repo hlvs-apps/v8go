@@ -91,7 +91,9 @@ typedef enum {
   GAV8_OP_F64 = 7,    // push floats[fltCursor++]
   GAV8_OP_STR = 8,    // push a String from spans[spanCursor++]
   GAV8_OP_BYTES = 9,  // push a Uint8Array from spans[spanCursor++]
-  // operand: shapeId. Pops shapes[shapeId].n values into an object.
+  // operand: shapeId. Pops shapes[shapeId].n values into an object. Every key
+  // in the shape gets a property, whatever its value: this op has no opinion
+  // about undefined, and only GAV8_OP_OBJ_OMIT reads one into it.
   GAV8_OP_OBJ = 10,
   GAV8_OP_MARK = 11,           // remember the current value-stack depth
   GAV8_OP_ARR_FROM_MARK = 12,  // pop everything above the mark into an Array
@@ -115,6 +117,32 @@ typedef enum {
   // for a value it is not sending, so touching one would desynchronise every
   // leaf that follows.
   GAV8_OP_NULLABLE = 14,
+  // operand: bodyLen. GAV8_OP_NULLABLE with a different absent value: flag =
+  // counts[cntCursor++], zero pushes UNDEFINED and skips the body outright,
+  // leaving every other cursor untouched, and anything non-zero runs the body,
+  // which must push exactly one value. Same frames, same validation, same
+  // skip rule — only the pushed sentinel differs.
+  //
+  // This is the op an ABSENT object key needs, which null cannot express:
+  // {"note":null} and {} are different values, and telling them apart is the
+  // entire question a producer with a conditionally-emitted field is asking.
+  // GAV8_OP_OBJ pops a fixed arity from its shape, so a key set that varies
+  // with the data cannot be built by skipping a push — hence a sentinel value
+  // and an object op that reads it.
+  GAV8_OP_OPTIONAL = 15,
+  // operand: shapeId. Pops shapes[shapeId].n values, exactly as GAV8_OP_OBJ
+  // does, and builds an object from only the pairs whose value is NOT
+  // undefined, in shape order. Every value undefined yields {}.
+  //
+  // So inside an OP_OBJ_OMIT field slot, undefined MEANS "omit this key". That
+  // is unambiguous by construction rather than by convention: null, booleans,
+  // numbers, strings, Uint8Array, arrays and objects are the whole of what a
+  // leaf can be, and undefined is not among them. The alternative, a presence
+  // bitmask read from counts, was rejected for being a second source of truth
+  // — a producer would stage both the value and the bit, and nothing would
+  // notice them disagreeing, so the object would pair the surviving keys with
+  // the wrong values and still be a perfectly valid object.
+  GAV8_OP_OBJ_OMIT = 16,
 } gav8_op;
 
 // Builds the entire value tree and returns the root as a tracked ValuePtr.

@@ -593,6 +593,452 @@ func TestBuildRoundTrip(t *testing.T) {
 			expr: "JSON.stringify(v)",
 			want: "null",
 		},
+		{
+			// OpOptional, the omitted-key encoding: the same machinery as
+			// OpNullable with a different absent value.
+			name: "optional primitive present",
+			build: func(p *prog) {
+				p.op(v8.OpOptional, 1)
+				p.op(v8.OpInt)
+				p.end()
+
+				p.dataFlag(true)
+				p.dataInt(42)
+			},
+			expr: "typeof v + ':' + v",
+			want: "number:42",
+		},
+		{
+			// Undefined, and specifically NOT null: {"note":null} and {} are
+			// different values, and telling them apart is what this op is for.
+			name: "optional primitive absent",
+			build: func(p *prog) {
+				p.op(v8.OpOptional, 1)
+				p.op(v8.OpInt)
+				p.end()
+
+				p.dataFlag(false)
+			},
+			expr: "typeof v + ':' + (v === null)",
+			want: "undefined:false",
+		},
+		{
+			name: "optional string absent",
+			build: func(p *prog) {
+				p.op(v8.OpOptional, 1)
+				p.op(v8.OpStr)
+				p.end()
+
+				p.dataFlag(false)
+			},
+			expr: "typeof v",
+			want: "undefined",
+		},
+		{
+			// Only zero is absent, exactly as for OpNullable.
+			name: "optional flag other than 1 is present",
+			build: func(p *prog) {
+				p.op(v8.OpOptional, 1)
+				p.op(v8.OpStr)
+				p.end()
+
+				p.dataCount(-1)
+				p.dataStr("present")
+			},
+			expr: "typeof v + ':' + v",
+			want: "string:present",
+		},
+		{
+			name: "optional struct absent",
+			build: func(p *prog) {
+				s := p.shape("id", "name")
+				p.op(v8.OpOptional, 4)
+				p.op(v8.OpInt)
+				p.op(v8.OpStr)
+				p.op(v8.OpObj, s)
+				p.end()
+
+				p.dataFlag(false)
+			},
+			expr: "typeof v",
+			want: "undefined",
+		},
+		{
+			// The skipped body holds an OpRepeat, whose bound is not staged
+			// either: the absent path may not read Counts past its own flag.
+			name: "optional array absent",
+			build: func(p *prog) {
+				p.op(v8.OpOptional, 5)
+				p.op(v8.OpMark)
+				p.op(v8.OpRepeat, 1)
+				p.op(v8.OpStr)
+				p.op(v8.OpArrFromMark)
+				p.end()
+
+				p.dataFlag(false)
+			},
+			expr: "typeof v",
+			want: "undefined",
+		},
+		{
+			// Two conditional frames ending on the SAME word: the nullable body
+			// is the tail of the optional body, so both retire at that pc and
+			// the inner one has to close first. One shared frame stack is what
+			// makes that ordering expressible.
+			name: "nullable body ending where an enclosing optional body ends",
+			build: func(p *prog) {
+				p.op(v8.OpOptional, 3)
+				p.op(v8.OpNullable, 1)
+				p.op(v8.OpStr)
+				p.end()
+
+				p.dataFlag(true)  // the optional is present
+				p.dataFlag(false) // and its value is a null
+			},
+			expr: "typeof v + ':' + (v === null)",
+			want: "object:true",
+		},
+		{
+			// And the mirror, with the optional inside.
+			name: "optional body ending where an enclosing nullable body ends",
+			build: func(p *prog) {
+				p.op(v8.OpNullable, 3)
+				p.op(v8.OpOptional, 1)
+				p.op(v8.OpStr)
+				p.end()
+
+				p.dataFlag(true)
+				p.dataFlag(false)
+			},
+			expr: "typeof v + ':' + (v === null)",
+			want: "undefined:false",
+		},
+		{
+			// The spec's nesting case for the new op: OpOptional inside
+			// OpRepeat inside OpOptional. The inner flag is read once per
+			// iteration, so the flags interleave with the loop's own bound.
+			name: "optional inside repeat inside optional",
+			build: func(p *prog) {
+				p.op(v8.OpOptional, 7)
+				p.op(v8.OpMark)
+				p.op(v8.OpRepeat, 3)
+				p.op(v8.OpOptional, 1)
+				p.op(v8.OpStr)
+				p.op(v8.OpArrFromMark)
+				p.end()
+
+				p.dataFlag(true)
+				p.dataCount(3)
+				p.dataFlag(true)
+				p.dataStr("a")
+				p.dataFlag(false)
+				p.dataFlag(true)
+				p.dataStr("b")
+			},
+			// An undefined array element stringifies as null, so identity is
+			// what distinguishes it from an OpNullable one.
+			expr: "v.length + ':' + v.map(x => x === undefined ? 'undef' : x).join(',')",
+			want: "3:a,undef,b",
+		},
+		{
+			name: "optional inside repeat inside optional, outer absent",
+			build: func(p *prog) {
+				p.op(v8.OpOptional, 7)
+				p.op(v8.OpMark)
+				p.op(v8.OpRepeat, 3)
+				p.op(v8.OpOptional, 1)
+				p.op(v8.OpStr)
+				p.op(v8.OpArrFromMark)
+				p.end()
+
+				p.dataFlag(false)
+			},
+			expr: "typeof v",
+			want: "undefined",
+		},
+		{
+			name:  "objomit with an empty shape",
+			build: func(p *prog) { s := p.shape(); p.op(v8.OpObjOmit, s); p.end() },
+			expr:  "JSON.stringify(v) + ':' + (Object.getPrototypeOf(v) === Object.prototype)",
+			want:  "{}:true",
+		},
+		{
+			name: "objomit with every field present",
+			build: func(p *prog) {
+				s := p.shape("name", "note", "n")
+				p.op(v8.OpStr)
+				p.op(v8.OpOptional, 1)
+				p.op(v8.OpStr)
+				p.op(v8.OpOptional, 1)
+				p.op(v8.OpInt)
+				p.op(v8.OpObjOmit, s)
+				p.end()
+
+				p.dataStr("ada")
+				p.dataFlag(true)
+				p.dataStr("a note")
+				p.dataFlag(true)
+				p.dataInt(7)
+			},
+			expr: "Object.keys(v).join(',') + ':' + JSON.stringify(v)",
+			want: `name,note,n:{"name":"ada","note":"a note","n":7}`,
+		},
+		{
+			name: "objomit with a mix",
+			build: func(p *prog) {
+				s := p.shape("name", "note", "n")
+				p.op(v8.OpStr)
+				p.op(v8.OpOptional, 1)
+				p.op(v8.OpStr)
+				p.op(v8.OpOptional, 1)
+				p.op(v8.OpInt)
+				p.op(v8.OpObjOmit, s)
+				p.end()
+
+				p.dataStr("ada")
+				p.dataFlag(false)
+				p.dataFlag(true)
+				p.dataInt(7)
+			},
+			// The key is GONE, not present-and-undefined: 'note' in v is the
+			// assertion JSON.stringify cannot make, since it drops both.
+			expr: "Object.keys(v).join(',') + ':' + ('note' in v) + ':' + JSON.stringify(v)",
+			want: `name,n:false:{"name":"ada","n":7}`,
+		},
+		{
+			// Every field omitempty and every field empty. Not an edge case:
+			// it is what a zero-valued struct serializes to.
+			name: "objomit with every field absent",
+			build: func(p *prog) {
+				s := p.shape("a", "b", "c")
+				p.op(v8.OpOptional, 1)
+				p.op(v8.OpStr)
+				p.op(v8.OpOptional, 1)
+				p.op(v8.OpInt)
+				p.op(v8.OpOptional, 1)
+				p.op(v8.OpF64)
+				p.op(v8.OpObjOmit, s)
+				p.end()
+
+				p.dataFlag(false)
+				p.dataFlag(false)
+				p.dataFlag(false)
+			},
+			expr: "JSON.stringify(v) + ':' + Object.keys(v).length + ':' + " +
+				"(Object.getPrototypeOf(v) === Object.prototype) + ':' + (v instanceof Object)",
+			want: "{}:0:true:true",
+		},
+		{
+			// A partly-omitted object is still an ordinary object: prototype,
+			// hasOwnProperty, instanceof. A null-proto one would have none of
+			// them and would not match what JSON.parse produces.
+			name: "objomit gets Object.prototype",
+			build: func(p *prog) {
+				s := p.shape("a", "b")
+				p.undef()
+				p.op(v8.OpInt)
+				p.op(v8.OpObjOmit, s)
+				p.end()
+
+				p.dataInt(1)
+			},
+			expr: `JSON.stringify(v) + ':' + (Object.getPrototypeOf(v) === Object.prototype) +
+				':' + (v instanceof Object) + ':' + v.hasOwnProperty('b') + ':' + v.hasOwnProperty('a')`,
+			want: `{"b":1}:true:true:true:false`,
+		},
+		{
+			// The contrast, and the reason OpObj is untouched: it has no
+			// opinion about undefined. The key is there, holding undefined,
+			// which Object.keys reports and JSON.stringify drops.
+			name: "obj keeps an undefined value as a key",
+			build: func(p *prog) {
+				s := p.shape("a", "b")
+				p.undef()
+				p.op(v8.OpInt)
+				p.op(v8.OpObj, s)
+				p.end()
+
+				p.dataInt(1)
+			},
+			expr: "Object.keys(v).join(',') + ':' + ('a' in v) + ':' + JSON.stringify(v)",
+			want: `a,b:true:{"b":1}`,
+		},
+		{
+			// Holes in the middle: the survivors keep shape order, they do not
+			// compact toward the front in some other order.
+			name: "objomit keeps shape order with holes",
+			build: func(p *prog) {
+				s := p.shape("k0", "k1", "k2", "k3", "k4")
+				p.op(v8.OpInt)
+				p.undef()
+				p.op(v8.OpInt)
+				p.undef()
+				p.op(v8.OpInt)
+				p.op(v8.OpObjOmit, s)
+				p.end()
+
+				p.dataInt(0)
+				p.dataInt(2)
+				p.dataInt(4)
+			},
+			expr: "Object.keys(v).join(',') + ':' + JSON.stringify(v)",
+			want: `k0,k2,k4:{"k0":0,"k2":2,"k4":4}`,
+		},
+		{
+			// The distinction the two ops draw, in one object: a nullable field
+			// that is null is a key holding null; an optional field that is
+			// absent is not a key at all.
+			name: "nullable null and optional absent in one objomit",
+			build: func(p *prog) {
+				s := p.shape("nulled", "omitted", "kept")
+				p.op(v8.OpNullable, 1)
+				p.op(v8.OpStr)
+				p.op(v8.OpOptional, 1)
+				p.op(v8.OpStr)
+				p.op(v8.OpInt)
+				p.op(v8.OpObjOmit, s)
+				p.end()
+
+				p.dataFlag(false)
+				p.dataFlag(false)
+				p.dataInt(1)
+			},
+			expr: "Object.keys(v).join(',') + ':' + JSON.stringify(v)",
+			want: `nulled,kept:{"nulled":null,"kept":1}`,
+		},
+		{
+			// Both span kinds through an omitting object, since a producer
+			// stages small leaves and pins large ones against a threshold.
+			name: "objomit over staged and pinned spans",
+			build: func(p *prog) {
+				s := p.shape("staged", "gone", "pinned")
+				p.op(v8.OpStr)
+				p.op(v8.OpOptional, 1)
+				p.op(v8.OpStr)
+				p.op(v8.OpStr)
+				p.op(v8.OpObjOmit, s)
+				p.end()
+
+				p.dataStr("small")
+				p.dataFlag(false)
+				p.dataPinStr("a pinned leaf a producer would not copy")
+			},
+			expr: "Object.keys(v).join(',') + ':' + JSON.stringify(v)",
+			want: `staged,pinned:{"staged":"small","pinned":"a pinned leaf a producer would not copy"}`,
+		},
+		{
+			name: "objomit inside a repeat, n == 0",
+			build: func(p *prog) {
+				s := p.shape("id", "note")
+				p.mark()
+				p.op(v8.OpRepeat, 6)
+				p.op(v8.OpInt)
+				p.op(v8.OpOptional, 1)
+				p.op(v8.OpStr)
+				p.op(v8.OpObjOmit, s)
+				p.arr()
+				p.end()
+
+				p.dataCount(0)
+			},
+			expr: "JSON.stringify(v)",
+			want: "[]",
+		},
+		{
+			name: "objomit inside a repeat, n == 1",
+			build: func(p *prog) {
+				s := p.shape("id", "note")
+				p.mark()
+				p.op(v8.OpRepeat, 6)
+				p.op(v8.OpInt)
+				p.op(v8.OpOptional, 1)
+				p.op(v8.OpStr)
+				p.op(v8.OpObjOmit, s)
+				p.arr()
+				p.end()
+
+				p.dataCount(1)
+				p.dataInt(1)
+				p.dataFlag(false)
+			},
+			expr: "JSON.stringify(v)",
+			want: `[{"id":1}]`,
+		},
+		{
+			// Many rows, alternating, so the shape's interned keys are reused
+			// across objects with different key SETS. Interning is per shape;
+			// the surviving subset is per object.
+			name: "objomit inside a repeat, many rows",
+			build: func(p *prog) {
+				s := p.shape("id", "note")
+				p.mark()
+				p.op(v8.OpRepeat, 6)
+				p.op(v8.OpInt)
+				p.op(v8.OpOptional, 1)
+				p.op(v8.OpStr)
+				p.op(v8.OpObjOmit, s)
+				p.arr()
+				p.end()
+
+				p.dataCount(4)
+				for i := 0; i < 4; i++ {
+					p.dataInt(int64(i))
+					p.dataFlag(i%2 == 1)
+					if i%2 == 1 {
+						p.dataStr("n" + strconv.Itoa(i))
+					}
+				}
+			},
+			expr: "JSON.stringify(v)",
+			want: `[{"id":0},{"id":1,"note":"n1"},{"id":2},{"id":3,"note":"n3"}]`,
+		},
+		{
+			// An OP_OBJ_OMIT object as an optional field's own value, so the
+			// two ops nest through each other.
+			name: "objomit object as an optional field's value",
+			build: func(p *prog) {
+				row := p.shape("id", "meta")
+				meta := p.shape("a", "b")
+				p.op(v8.OpInt)
+				p.op(v8.OpOptional, 8)
+				p.op(v8.OpOptional, 1)
+				p.op(v8.OpStr)
+				p.op(v8.OpOptional, 1)
+				p.op(v8.OpInt)
+				p.op(v8.OpObjOmit, meta)
+				p.op(v8.OpObjOmit, row)
+				p.end()
+
+				p.dataInt(1)
+				p.dataFlag(true)  // meta is present
+				p.dataFlag(false) // meta.a is not
+				p.dataFlag(true)  // meta.b is
+				p.dataInt(9)
+			},
+			expr: "JSON.stringify(v)",
+			want: `{"id":1,"meta":{"b":9}}`,
+		},
+		{
+			name: "objomit object as an absent optional field",
+			build: func(p *prog) {
+				row := p.shape("id", "meta")
+				meta := p.shape("a", "b")
+				p.op(v8.OpInt)
+				p.op(v8.OpOptional, 8)
+				p.op(v8.OpOptional, 1)
+				p.op(v8.OpStr)
+				p.op(v8.OpOptional, 1)
+				p.op(v8.OpInt)
+				p.op(v8.OpObjOmit, meta)
+				p.op(v8.OpObjOmit, row)
+				p.end()
+
+				p.dataInt(1)
+				p.dataFlag(false)
+			},
+			expr: "Object.keys(v).join(',') + ':' + JSON.stringify(v)",
+			want: `id:{"id":1}`,
+		},
 	}
 
 	for _, tt := range tests {
@@ -699,6 +1145,158 @@ func TestBuildNullableCursorInvariance(t *testing.T) {
 		want := `{"lead":11,"opt":{"n":7,"f":1.5,"tags":["t1","t2"]},` + tailJSON
 		if got := eval(t, ctx, p.build(t, ctx), "JSON.stringify(v)"); got != want {
 			t.Errorf("tree with the nullable present = %s, want %s", got, want)
+		}
+	})
+}
+
+// The same failure for OP_OPTIONAL, asserted three ways, because the skipped
+// branch is the one thing about this op that a shallow test cannot see. The
+// optional itself reads undefined whatever the cursors did, so an
+// implementation that consumes an entry the producer never staged — which is
+// what running the body and discarding its result does, and what "advance past
+// the body's data" does — passes every assertion about the optional and
+// corrupts every leaf after it.
+//
+//   - "exact arrays" is the DIRECT one. Nums, Floats, Spans and Counts are each
+//     sized to exactly what the leaves after the absent optional consume, so
+//     any movement on the skipped branch is not a wrong value, it is a cursor
+//     off the end of its array and a hard error. The sizes are asserted, so
+//     padding an array later cannot silently disarm it.
+//   - "exact arrays, present" is its control: the same program with the flag
+//     set consumes exactly the entries the body needs and no more.
+//   - "shifted values" is the round-trip one, over rows that alternate, where a
+//     leak lands on the NEXT row's leaves instead of off the end — a plausible
+//     tree holding the wrong data, which no size check would catch.
+func TestBuildOptionalCursorInvariance(t *testing.T) {
+	t.Parallel()
+	iso := v8.NewIsolate()
+	defer iso.Dispose()
+	ctx := v8.NewContext(iso)
+	defer ctx.Close()
+
+	// A row whose first field is an optional struct that would read one entry
+	// from each of the four arrays, followed by leaves that read all four
+	// again. The row object omits, so the absent optional also drops its key.
+	emit := func(p *prog) {
+		opt := p.shape("n", "f", "s", "tags")
+		row := p.shape("opt", "num", "flt", "str", "list")
+
+		p.op(v8.OpOptional, 10)
+		p.op(v8.OpInt)  //   opt.n:    Nums
+		p.op(v8.OpF64)  //   opt.f:    Floats
+		p.op(v8.OpStr)  //   opt.s:    Spans
+		p.op(v8.OpMark) //   opt.tags:
+		p.op(v8.OpRepeat, 1)
+		p.op(v8.OpStr) //             Spans, and Counts for the bound
+		p.op(v8.OpArrFromMark)
+		p.op(v8.OpObj, opt)
+		p.op(v8.OpInt)  // num:  Nums
+		p.op(v8.OpF64)  // flt:  Floats
+		p.op(v8.OpStr)  // str:  Spans
+		p.op(v8.OpMark) // list:
+		p.op(v8.OpRepeat, 1)
+		p.op(v8.OpStr) //       Spans, and Counts for the bound
+		p.op(v8.OpArrFromMark)
+		p.op(v8.OpObjOmit, row)
+		p.end()
+	}
+
+	// The trailing leaves, identical in both cases. An empty list, so that the
+	// last Counts entry is the last one there is.
+	tail := func(p *prog) {
+		p.dataInt(22)
+		p.dataF64(0.25)
+		p.dataStr("after")
+		p.dataCount(0)
+	}
+	const tailJSON = `"num":22,"flt":0.25,"str":"after","list":[]}`
+
+	// exact fails the test unless every array holds precisely the given number
+	// of entries. Without this the arrays could grow slack and the subtests
+	// would still pass while proving nothing.
+	exact := func(t *testing.T, p *prog, nums, floats, vspans, counts int) {
+		t.Helper()
+		pl := p.payload()
+		if len(pl.Nums) != nums || len(pl.Floats) != floats ||
+			len(pl.Spans)-pl.KeySpans != vspans || len(pl.Counts) != counts {
+			t.Fatalf("payload is not exactly sized: nums %d/%d, floats %d/%d, "+
+				"value spans %d/%d, counts %d/%d; an oversized array would let a "+
+				"leaked cursor read a neighbour instead of failing",
+				len(pl.Nums), nums, len(pl.Floats), floats,
+				len(pl.Spans)-pl.KeySpans, vspans, len(pl.Counts), counts)
+		}
+	}
+
+	t.Run("exact arrays", func(t *testing.T) {
+		p := &prog{}
+		defer p.release()
+		emit(p)
+		p.dataFlag(false)
+		tail(p)
+
+		// One entry in each of Nums, Floats and the value spans, and two in
+		// Counts (the flag, then the trailing list's bound). Every one of them
+		// belongs to a leaf AFTER the optional, so the skipped branch has
+		// nowhere to move a cursor to.
+		exact(t, p, 1, 1, 1, 2)
+
+		want := `{` + tailJSON
+		if got := eval(t, ctx, p.build(t, ctx), "JSON.stringify(v)"); got != want {
+			t.Errorf("tree with an absent optional = %s, want %s", got, want)
+		}
+	})
+
+	t.Run("exact arrays, present", func(t *testing.T) {
+		p := &prog{}
+		defer p.release()
+		emit(p)
+		p.dataFlag(true)
+		p.dataInt(7)    // opt.n
+		p.dataF64(1.5)  // opt.f
+		p.dataStr("in") // opt.s
+		p.dataCount(1)  // opt.tags bound
+		p.dataStr("t1")
+		tail(p)
+
+		exact(t, p, 2, 2, 3, 3)
+
+		want := `{"opt":{"n":7,"f":1.5,"s":"in","tags":["t1"]},` + tailJSON
+		if got := eval(t, ctx, p.build(t, ctx), "JSON.stringify(v)"); got != want {
+			t.Errorf("tree with the optional present = %s, want %s", got, want)
+		}
+	})
+
+	t.Run("shifted values", func(t *testing.T) {
+		p := &prog{}
+		defer p.release()
+
+		s := p.shape("id", "note")
+		p.mark()
+		p.op(v8.OpRepeat, 6)
+		p.op(v8.OpInt)
+		p.op(v8.OpOptional, 1)
+		p.op(v8.OpStr)
+		p.op(v8.OpObjOmit, s)
+		p.arr()
+		p.end()
+
+		const rows = 6
+		p.dataCount(rows)
+		for i := 0; i < rows; i++ {
+			p.dataInt(int64(i))
+			p.dataFlag(i%2 == 1)
+			if i%2 == 1 {
+				p.dataStr("note-" + strconv.Itoa(i))
+			}
+		}
+
+		// Every value is distinct and every absent row is followed by a present
+		// one, so a cursor leaked on row i shows up as row i+1 wearing row
+		// i+2's data rather than as an out-of-range error.
+		want := `[{"id":0},{"id":1,"note":"note-1"},{"id":2},` +
+			`{"id":3,"note":"note-3"},{"id":4},{"id":5,"note":"note-5"}]`
+		if got := eval(t, ctx, p.build(t, ctx), "JSON.stringify(v)"); got != want {
+			t.Errorf("rows with alternating optionals = %s, want %s", got, want)
 		}
 	})
 }
@@ -846,6 +1444,51 @@ func TestBuildBytesOneMiB(t *testing.T) {
 	}
 	if got := val.ArrayBufferViewBytes(); !bytes.Equal(got, want) {
 		t.Errorf("1 MiB payload did not round-trip byte for byte")
+	}
+}
+
+/********** the opcode numbers themselves **********/
+
+// The opcode values are an ABI, and the only kind of breakage they have is
+// silent: a producer that emits 15 for one op against a builder that reads 15
+// as another executes a different program, with no error anywhere and a
+// plausible tree at the end. Adding an op in the middle of the enum, or
+// reordering it for tidiness, is a one-character change with that consequence,
+// so the numbers are written out here as literals rather than derived from the
+// constants they are checking.
+//
+// The rule this pins: append only. A new op takes the next free number.
+func TestOpcodeABIValues(t *testing.T) {
+	t.Parallel()
+	for _, c := range []struct {
+		name string
+		got  uint32
+		want uint32
+	}{
+		{"OpEnd", v8.OpEnd, 0},
+		{"OpNull", v8.OpNull, 1},
+		{"OpUndef", v8.OpUndef, 2},
+		{"OpTrue", v8.OpTrue, 3},
+		{"OpFalse", v8.OpFalse, 4},
+		{"OpBool", v8.OpBool, 5},
+		{"OpInt", v8.OpInt, 6},
+		{"OpF64", v8.OpF64, 7},
+		{"OpStr", v8.OpStr, 8},
+		{"OpBytes", v8.OpBytes, 9},
+		{"OpObj", v8.OpObj, 10},
+		{"OpMark", v8.OpMark, 11},
+		{"OpArrFromMark", v8.OpArrFromMark, 12},
+		{"OpRepeat", v8.OpRepeat, 13},
+		{"OpNullable", v8.OpNullable, 14},
+		{"OpOptional", v8.OpOptional, 15},
+		{"OpObjOmit", v8.OpObjOmit, 16},
+		{"SpanStaged", v8.SpanStaged, 0},
+		{"SpanPinned", v8.SpanPinned, 1},
+	} {
+		if c.got != c.want {
+			t.Errorf("%s = %d, want %d; these values are an ABI and may be "+
+				"added to but never renumbered", c.name, c.got, c.want)
+		}
 	}
 }
 
@@ -1042,8 +1685,19 @@ func TestBuildMatchesBatchScope(t *testing.T) {
 	fatalIf(t, ctx.Global().Set("built", built))
 	fatalIf(t, ctx.Global().Set("oracle", oracle))
 
-	// Structural comparison including key order at every object.
-	const cmp = `(() => {
+	if got := diffJS(t, ctx, "built", "oracle"); got != "equal" {
+		t.Errorf("op-buffer tree differs from the scope-built tree: %s", got)
+	}
+}
+
+// diffJS compares two values already installed on the global by name and
+// returns "equal" or the first difference. Key order and prototype are compared
+// at every object as well as the values: two objects can hold the same
+// properties and still not be the same object to a consumer that iterates them,
+// and a null-prototype one is not the same object to anything.
+func diffJS(t *testing.T, ctx *v8.Context, a, b string) string {
+	t.Helper()
+	src := `(() => {
 		const diff = (a, b, path) => {
 			if (Array.isArray(a) || Array.isArray(b)) {
 				if (!Array.isArray(a) || !Array.isArray(b)) return 'arrayness at ' + path;
@@ -1070,14 +1724,187 @@ func TestBuildMatchesBatchScope(t *testing.T) {
 			if (a !== b) return 'value at ' + path + ': ' + String(a) + ' vs ' + String(b);
 			return '';
 		};
-		return diff(built, oracle, '$') || 'equal';
+		return diff(` + a + `, ` + b + `, '$') || 'equal';
 	})()`
 
-	out, err := ctx.RunScript(cmp, "gav8_build_oracle.js")
+	out, err := ctx.RunScript(src, "gav8_build_diff.js")
 	fatalIf(t, err)
-	if got := out.String(); got != "equal" {
-		t.Errorf("op-buffer tree differs from the scope-built tree: %s", got)
+	return out.String()
+}
+
+// OP_OBJ_OMIT with nothing omitted must BE OP_OBJ. Otherwise a producer that
+// switches ops the moment a struct gains one omitempty field would quietly
+// change the shape of every object it emits — key order, prototype, or the
+// values paired with the keys.
+//
+// The parsed arm is the contract that actually matters, and it is why the
+// omitted keys are written out of the JSON rather than set to null: a consumer
+// must not be able to tell a built object from the JSON.parse of the same data.
+func TestBuildObjOmitMatchesObj(t *testing.T) {
+	t.Parallel()
+	iso := v8.NewIsolate()
+	defer iso.Dispose()
+	ctx := v8.NewContext(iso)
+	defer ctx.Close()
+
+	const rows = 200
+	// Row i keeps note when i%3 != 0 and score when i%4 != 0, so every
+	// combination of present and absent occurs, including neither and both.
+	hasNote := func(i int) bool { return i%3 != 0 }
+	hasScore := func(i int) bool { return i%4 != 0 }
+
+	// --- OP_OBJ_OMIT, with two of the four fields optional ---
+	omitted := &prog{}
+	defer omitted.release()
+	s := omitted.shape("id", "note", "score", "tag")
+	omitted.mark()
+	omitted.op(v8.OpRepeat, 10)
+	omitted.op(v8.OpInt) // id
+	omitted.op(v8.OpOptional, 1)
+	omitted.op(v8.OpStr) // note
+	omitted.op(v8.OpOptional, 1)
+	omitted.op(v8.OpF64) // score
+	omitted.op(v8.OpStr) // tag, never optional
+	omitted.op(v8.OpObjOmit, s)
+	omitted.arr()
+	omitted.end()
+
+	omitted.dataCount(rows)
+	for i := 0; i < rows; i++ {
+		omitted.dataInt(int64(i))
+		omitted.dataFlag(hasNote(i))
+		if hasNote(i) {
+			omitted.dataStr("note-" + strconv.Itoa(i))
+		}
+		omitted.dataFlag(hasScore(i))
+		if hasScore(i) {
+			omitted.dataF64(float64(i) / 7)
+		}
+		// Pinned on half the rows: a producer picks per value.
+		if i%2 == 0 {
+			omitted.dataStr("tag-" + strconv.Itoa(i))
+		} else {
+			omitted.dataPinStr("tag-" + strconv.Itoa(i))
+		}
 	}
+	built := omitted.build(t, ctx)
+
+	// --- the same rows through JSON.parse, keys genuinely absent ---
+	var js []byte
+	js = append(js, '[')
+	for i := 0; i < rows; i++ {
+		if i > 0 {
+			js = append(js, ',')
+		}
+		js = append(js, `{"id":`...)
+		js = strconv.AppendInt(js, int64(i), 10)
+		if hasNote(i) {
+			js = append(js, `,"note":"note-`...)
+			js = strconv.AppendInt(js, int64(i), 10)
+			js = append(js, '"')
+		}
+		if hasScore(i) {
+			js = append(js, `,"score":`...)
+			js = strconv.AppendFloat(js, float64(i)/7, 'g', -1, 64)
+		}
+		js = append(js, `,"tag":"tag-`...)
+		js = strconv.AppendInt(js, int64(i), 10)
+		js = append(js, '"', '}')
+	}
+	js = append(js, ']')
+
+	parsed, err := v8.JSONParse(ctx, string(js))
+	fatalIf(t, err)
+	defer parsed.Release()
+
+	fatalIf(t, ctx.Global().Set("built", built))
+	fatalIf(t, ctx.Global().Set("parsed", parsed))
+	if got := diffJS(t, ctx, "built", "parsed"); got != "equal" {
+		t.Errorf("OP_OBJ_OMIT tree differs from the parsed one: %s", got)
+	}
+
+	// The all-present half of the requirement: OP_OBJ and OP_OBJ_OMIT over the
+	// same shape and the same values, built side by side.
+	keys, data := benchRows(6, 50)
+	viaObj := buildProgramObjOp(keys, data, v8.OpObj)
+	defer viaObj.release()
+	viaOmit := buildProgramObjOp(keys, data, v8.OpObjOmit)
+	defer viaOmit.release()
+
+	a := viaObj.build(t, ctx)
+	b := viaOmit.build(t, ctx)
+	fatalIf(t, ctx.Global().Set("viaObj", a))
+	fatalIf(t, ctx.Global().Set("viaOmit", b))
+	if got := diffJS(t, ctx, "viaObj", "viaOmit"); got != "equal" {
+		t.Errorf("OP_OBJ_OMIT with every key present differs from OP_OBJ: %s", got)
+	}
+	if got := eval(t, ctx, b, "JSON.stringify(v) === JSON.stringify(viaObj)"); got != "true" {
+		t.Errorf("OP_OBJ_OMIT and OP_OBJ stringify differently with every key present")
+	}
+}
+
+// Requirement 7, restated for the new ops: a tree that uses them is still one
+// crossing and still exactly one tracked value. Neither op allocates anything
+// the builder has to hand back, and the omit scratch is reused across the whole
+// program rather than per object.
+//
+// Not parallel: BuildCallCount is process-wide.
+func TestBuildOptionalOneCrossingOneValue(t *testing.T) {
+	iso := v8.NewIsolate()
+	defer iso.Dispose()
+	ctx := v8.NewContext(iso)
+	defer ctx.Close()
+
+	const rows = 1000
+	p := &prog{}
+	defer p.release()
+	s := p.shape("id", "note", "score")
+	p.mark()
+	p.op(v8.OpRepeat, 9)
+	p.op(v8.OpInt)
+	p.op(v8.OpOptional, 1)
+	p.op(v8.OpStr)
+	p.op(v8.OpOptional, 1)
+	p.op(v8.OpF64)
+	p.op(v8.OpObjOmit, s)
+	p.arr()
+	p.end()
+
+	p.dataCount(rows)
+	for i := 0; i < rows; i++ {
+		p.dataInt(int64(i))
+		p.dataFlag(i%2 == 0)
+		if i%2 == 0 {
+			p.dataStr("note-" + strconv.Itoa(i))
+		}
+		p.dataFlag(i%3 == 0)
+		if i%3 == 0 {
+			p.dataF64(float64(i) / 3)
+		}
+	}
+
+	before := ctx.RetainedValueCount()
+	v8.ResetBuildCallCount()
+	val, err := v8.BuildValue(ctx, p.payload())
+	fatalIf(t, err)
+
+	if got := v8.BuildCallCount(); got != 1 {
+		t.Fatalf("building a %d-row optional tree took %d crossings, want exactly 1", rows, got)
+	}
+	if delta := ctx.RetainedValueCount() - before; delta != 1 {
+		t.Fatalf("RetainedValueCount grew by %d, want exactly 1 (the root)", delta)
+	}
+
+	const expr = `v.length + ':' + Object.keys(v[0]).join(',') + ':' +
+		Object.keys(v[1]).join(',') + ':' + Object.keys(v[2]).join(',') + ':' +
+		Object.keys(v[999]).join(',') + ':' + v[999].id`
+	// Row 0 keeps both, row 1 keeps neither, row 2 keeps note only, and row 999
+	// (odd, divisible by 3) keeps score only.
+	want := "1000:id,note,score:id:id,note:id,score:999"
+	if got := eval(t, ctx, val, expr); got != want {
+		t.Errorf("tree = %q, want %q", got, want)
+	}
+	val.Release()
 }
 
 /********** failing closed **********/
@@ -1316,6 +2143,157 @@ func TestBuildMalformed(t *testing.T) {
 				Counts: []int32{1, 1},
 			},
 		},
+		// OP_OPTIONAL shares OP_NULLABLE's frame, so it inherits every check
+		// above — which is exactly why each one is restated here rather than
+		// assumed: sharing is a property of the current implementation, and
+		// these are properties of the ABI.
+		{
+			name: "OP_OPTIONAL truncated before its body length",
+			p:    v8.Payload{Ops: []uint32{v8.OpOptional}, Counts: []int32{1}},
+		},
+		{
+			name: "optional with an empty body",
+			p: v8.Payload{
+				Ops:    []uint32{v8.OpOptional, 0, v8.OpNull, v8.OpEnd},
+				Counts: []int32{1},
+			},
+		},
+		{
+			name: "optional with an empty body and a clear flag",
+			p: v8.Payload{
+				Ops:    []uint32{v8.OpOptional, 0, v8.OpNull, v8.OpEnd},
+				Counts: []int32{0},
+			},
+		},
+		{
+			name: "optional body runs past the op buffer",
+			p: v8.Payload{
+				Ops:    []uint32{v8.OpOptional, 99, v8.OpNull, v8.OpEnd},
+				Counts: []int32{1},
+			},
+		},
+		{
+			name: "optional body runs past the op buffer with a clear flag",
+			p: v8.Payload{
+				Ops:    []uint32{v8.OpOptional, 99, v8.OpNull, v8.OpEnd},
+				Counts: []int32{0},
+			},
+		},
+		{
+			name: "counts cursor exhausted at OP_OPTIONAL",
+			p:    v8.Payload{Ops: []uint32{v8.OpOptional, 1, v8.OpNull, v8.OpEnd}},
+		},
+		{
+			name: "optional body pushes nothing",
+			p: v8.Payload{
+				Ops:    []uint32{v8.OpOptional, 3, v8.OpRepeat, 1, v8.OpInt, v8.OpEnd},
+				Counts: []int32{1, 0},
+				Nums:   []int64{5},
+			},
+		},
+		{
+			name: "optional body pushes two values",
+			p: v8.Payload{
+				Ops:    []uint32{v8.OpOptional, 2, v8.OpNull, v8.OpNull, v8.OpEnd},
+				Counts: []int32{1},
+			},
+		},
+		{
+			name: "OP_END inside an optional body",
+			p: v8.Payload{
+				Ops:    []uint32{v8.OpOptional, 2, v8.OpEnd, v8.OpNull, v8.OpEnd},
+				Counts: []int32{1},
+			},
+		},
+		{
+			name: "optional body leaves an OP_MARK open",
+			p: v8.Payload{
+				Ops:    []uint32{v8.OpOptional, 2, v8.OpMark, v8.OpNull, v8.OpEnd},
+				Counts: []int32{1},
+			},
+		},
+		{
+			name: "optional body closes an outer OP_MARK",
+			p: v8.Payload{
+				Ops:    []uint32{v8.OpMark, v8.OpNull, v8.OpOptional, 1, v8.OpArrFromMark, v8.OpEnd},
+				Counts: []int32{1},
+			},
+		},
+		{
+			// Net +1 on the stack, so the exit depth check passes — and the
+			// object still took a value pushed before the flag was read.
+			name: "optional body pops a value pushed outside it",
+			p: v8.Payload{
+				Ops:    []uint32{v8.OpNull, v8.OpOptional, 4, v8.OpNull, v8.OpObj, 0, v8.OpNull, v8.OpEnd},
+				Shapes: twoKeys, Spans: keySpans, KeySpans: 2, Buf: []byte("ab"),
+				Counts: []int32{1},
+			},
+		},
+		{
+			// The same theft out through OP_OBJ_OMIT, which needs its own floor
+			// check: it is a second op that pops an arity.
+			name: "optional body pops a value pushed outside it, via OP_OBJ_OMIT",
+			p: v8.Payload{
+				Ops:    []uint32{v8.OpNull, v8.OpOptional, 4, v8.OpNull, v8.OpObjOmit, 0, v8.OpNull, v8.OpEnd},
+				Shapes: twoKeys, Spans: keySpans, KeySpans: 2, Buf: []byte("ab"),
+				Counts: []int32{1},
+			},
+		},
+		{
+			name: "OP_OBJ_OMIT truncated before its shape id",
+			p: v8.Payload{
+				Ops: []uint32{v8.OpObjOmit}, Shapes: oneKey,
+				Spans: keySpans[:1], KeySpans: 1, Buf: []byte("ab"),
+			},
+		},
+		{
+			name: "OP_OBJ_OMIT shape id out of range",
+			p:    v8.Payload{Ops: []uint32{v8.OpObjOmit, 7, v8.OpEnd}},
+		},
+		{
+			name: "stack underflow at OP_OBJ_OMIT",
+			p: v8.Payload{
+				// Shape wants two values, one was pushed. The arity popped is
+				// the shape's, not the number of non-undefined values, so an
+				// all-undefined object is still an underflow when it is short.
+				Ops:    []uint32{v8.OpNull, v8.OpObjOmit, 0, v8.OpEnd},
+				Shapes: twoKeys, Spans: keySpans, KeySpans: 2, Buf: []byte("ab"),
+			},
+		},
+		{
+			name: "stack underflow at OP_OBJ_OMIT with undefined values",
+			p: v8.Payload{
+				Ops:    []uint32{v8.OpUndef, v8.OpObjOmit, 0, v8.OpEnd},
+				Shapes: twoKeys, Spans: keySpans, KeySpans: 2, Buf: []byte("ab"),
+			},
+		},
+		{
+			name: "OP_OBJ_OMIT pops past an OP_MARK",
+			p: v8.Payload{
+				Ops: []uint32{v8.OpNull, v8.OpNull, v8.OpMark, v8.OpNull,
+					v8.OpObjOmit, 0, v8.OpEnd},
+				Shapes: twoKeys, Spans: keySpans, KeySpans: 2, Buf: []byte("ab"),
+			},
+		},
+		{
+			name: "OP_OBJ_OMIT shape keys outside the key region",
+			p: v8.Payload{
+				Ops:    []uint32{v8.OpNull, v8.OpNull, v8.OpObjOmit, 0, v8.OpEnd},
+				Shapes: twoKeys, Spans: keySpans, KeySpans: 1, Buf: []byte("ab"),
+			},
+		},
+		{
+			name: "duplicate keys in an OP_OBJ_OMIT shape",
+			p: v8.Payload{
+				Ops:    []uint32{v8.OpNull, v8.OpNull, v8.OpObjOmit, 0, v8.OpEnd},
+				Shapes: twoKeys,
+				Spans: []v8.Span{
+					{Off: 0, Len: 1, Kind: v8.SpanStaged},
+					{Off: 0, Len: 1, Kind: v8.SpanStaged},
+				},
+				KeySpans: 2, Buf: []byte("a"),
+			},
+		},
 		{
 			name: "nums cursor exhausted",
 			p:    v8.Payload{Ops: []uint32{v8.OpInt, v8.OpEnd}},
@@ -1460,6 +2438,10 @@ func FuzzBuildValue(f *testing.F) {
 	f.Add([]byte{10, 0, 0, 255, 255, 255, 255})
 	f.Add([]byte{14, 1, 8, 0})
 	f.Add([]byte{14, 5, 11, 13, 1, 6, 12, 0})
+	f.Add([]byte{15, 1, 8, 0})
+	f.Add([]byte{15, 1, 2, 16, 1, 0})
+	f.Add([]byte{2, 6, 16, 1, 0})
+	f.Add([]byte{15, 5, 11, 13, 1, 6, 12, 0})
 
 	iso := v8.NewIsolate()
 	f.Cleanup(iso.Dispose)
@@ -1692,6 +2674,14 @@ func TestBuildReadCostRatio(t *testing.T) {
 // buildProgram encodes the SQL-shaped result set from benchRows as a build
 // program: one loop body of cols+2 ops, whatever the row count.
 func buildProgram(keys []string, rows [][]any) *prog {
+	return buildProgramObjOp(keys, rows, v8.OpObj)
+}
+
+// buildProgramObjOp is buildProgram with the object op chosen by the caller, so
+// that OpObj and OpObjOmit can be measured and compared over identical data
+// with every key present. Nothing here ever pushes undefined, so the two builds
+// must produce the same tree.
+func buildProgramObjOp(keys []string, rows [][]any, objOp uint32) *prog {
 	p := &prog{}
 	shape := p.shape(keys...)
 
@@ -1707,7 +2697,7 @@ func buildProgram(keys []string, rows [][]any) *prog {
 			p.op(v8.OpStr)
 		}
 	}
-	p.op(v8.OpObj, shape)
+	p.op(objOp, shape)
 	p.arr()
 	p.end()
 
@@ -1808,6 +2798,112 @@ func BenchmarkBuildValuePrebuilt(b *testing.B) {
 			keys, rows := benchRows(size.cols, size.rows)
 			p := buildProgram(keys, rows)
 			defer p.release()
+			payload := p.payload()
+
+			b.ResetTimer()
+			for range b.N {
+				val, err := v8.BuildValue(ctx, payload)
+				if err != nil {
+					b.Fatal(err)
+				}
+				val.Release()
+			}
+		})
+	}
+}
+
+// What OP_OBJ_OMIT costs when it omits nothing: the same tree as
+// BenchmarkBuildValuePrebuilt, key for key, with the one op swapped. The
+// difference is the compaction scan and the scratch key array, paid on the case
+// a producer would hit by default if it emitted the omitting form
+// unconditionally. If it is material, emit OP_OBJ for structs with no optional
+// field — which is free, since the producer already knows which those are.
+func BenchmarkBuildValuePrebuiltObjOmit(b *testing.B) {
+	for _, size := range benchSizes {
+		b.Run(size.name, func(b *testing.B) {
+			iso := v8.NewIsolate()
+			defer iso.Dispose()
+			ctx := v8.NewContext(iso)
+			defer ctx.Close()
+
+			keys, rows := benchRows(size.cols, size.rows)
+			p := buildProgramObjOp(keys, rows, v8.OpObjOmit)
+			defer p.release()
+			payload := p.payload()
+
+			b.ResetTimer()
+			for range b.N {
+				val, err := v8.BuildValue(ctx, payload)
+				if err != nil {
+					b.Fatal(err)
+				}
+				val.Release()
+			}
+		})
+	}
+}
+
+// And the shape the ops exist for: the same rows with a third of the columns
+// optional and a third of those absent, so the omitting object really omits.
+// Fewer properties are built, so this is not comparable to the two arms above
+// as a like-for-like — it is here to show what the whole mechanism costs end to
+// end on a payload that uses it.
+func BenchmarkBuildValuePrebuiltOptional(b *testing.B) {
+	for _, size := range benchSizes {
+		b.Run(size.name, func(b *testing.B) {
+			iso := v8.NewIsolate()
+			defer iso.Dispose()
+			ctx := v8.NewContext(iso)
+			defer ctx.Close()
+
+			keys, rows := benchRows(size.cols, size.rows)
+
+			p := &prog{}
+			defer p.release()
+			shape := p.shape(keys...)
+
+			// Every third column is optional, which costs it two extra words.
+			bodyLen := uint32(len(keys)) + 2
+			for c := range keys {
+				if c%3 == 2 {
+					bodyLen += 2
+				}
+			}
+			p.mark()
+			p.op(v8.OpRepeat, bodyLen)
+			for c := range keys {
+				if c%3 == 2 {
+					p.op(v8.OpOptional, 1)
+					p.op(v8.OpStr)
+					continue
+				}
+				if c%3 == 0 {
+					p.op(v8.OpInt)
+				} else {
+					p.op(v8.OpF64)
+				}
+			}
+			p.op(v8.OpObjOmit, shape)
+			p.arr()
+			p.end()
+
+			p.dataCount(int32(len(rows)))
+			for r, row := range rows {
+				for c, cell := range row {
+					switch x := cell.(type) {
+					case int32:
+						p.dataInt(int64(x))
+					case float64:
+						p.dataF64(x)
+					default:
+						present := (r+c)%3 != 0
+						p.dataFlag(present)
+						if present {
+							p.dataStr(x.(string))
+						}
+					}
+				}
+			}
 			payload := p.payload()
 
 			b.ResetTimer()

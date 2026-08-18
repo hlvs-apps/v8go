@@ -67,7 +67,9 @@ const (
 	// OpBytes pushes a Uint8Array from the next value Span.
 	OpBytes uint32 = C.GAV8_OP_BYTES
 	// OpObj is followed by a shape id. It pops that shape's key count off the
-	// stack, in shape order, and pushes the object.
+	// stack, in shape order, and pushes the object. Every key in the shape
+	// gets a property, whatever its value; only [OpObjOmit] reads anything
+	// into an undefined.
 	OpObj uint32 = C.GAV8_OP_OBJ
 	// OpMark remembers the current stack depth.
 	OpMark uint32 = C.GAV8_OP_MARK
@@ -99,6 +101,27 @@ const (
 	// are errors, since either would make the tree depend on the flag in a way
 	// the generator did not write.
 	OpNullable uint32 = C.GAV8_OP_NULLABLE
+	// OpOptional is [OpNullable] with a different absent value: the flag comes
+	// from the next Counts entry, zero pushes undefined instead of null, and
+	// everything else — the skipped body, the untouched cursors, the
+	// exactly-one-value contract, the self-containment rules — is identical.
+	//
+	// It is how an ABSENT object key is encoded, and null cannot stand in for
+	// it: {"note":null} and {} are different values, and a producer whose
+	// field is conditionally emitted is asking for exactly that distinction.
+	// Pair it with [OpObjOmit], which reads the sentinel.
+	OpOptional uint32 = C.GAV8_OP_OPTIONAL
+	// OpObjOmit is followed by a shape id. It pops the same fixed arity as
+	// [OpObj] and builds an object from only the pairs whose value is not
+	// undefined, in shape order; all of them undefined yields {}.
+	//
+	// Undefined is the omit sentinel because it cannot occur as a legitimate
+	// value: null, booleans, numbers, strings, Uint8Array, arrays and objects
+	// are the whole of what a leaf can be, so nothing but [OpUndef] and an
+	// absent [OpOptional] produces one. A presence bitmask would instead be a
+	// second source of truth, and a producer whose bit and whose staged value
+	// disagreed would build a valid object with its fields shifted.
+	OpObjOmit uint32 = C.GAV8_OP_OBJ_OMIT
 )
 
 // Span locates one string or byte-slice leaf, either in [Payload.Buf] or
@@ -152,7 +175,7 @@ type Payload struct {
 	Floats []float64
 	// Counts holds the program's control-flow values in execution order: one
 	// entry per OpRepeat executed, holding the length of that region, and one
-	// per OpNullable executed, holding its present/absent flag.
+	// per OpNullable or OpOptional executed, holding its present/absent flag.
 	Counts []int32
 }
 
