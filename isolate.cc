@@ -4,6 +4,8 @@
 #include "deps/include/v8-platform.h"
 
 #include "context.h"
+#include "snapshot.h"
+#include <shared_mutex>
 #include "isolate.h"
 #include "libplatform/libplatform.h"
 
@@ -11,6 +13,7 @@ using namespace v8;
 
 auto default_platform = platform::NewDefaultPlatform();
 ArrayBuffer::Allocator* default_allocator;
+std::shared_mutex isolate_creation_mutex;
 
 extern "C" {
 
@@ -41,9 +44,11 @@ size_t NearMemoryLimitCallback(void* data, size_t current_heap_limit, size_t ini
   return current_heap_limit * 2;
 }
 
-IsolatePtr NewIsolate(IsolateConstraintsPtr constraints) {
+static IsolatePtr CreateIsolate(IsolateConstraintsPtr constraints, const StartupData* blob) {
+  std::shared_lock<std::shared_mutex> creation_lock(isolate_creation_mutex);
   Isolate::CreateParams params;
   params.array_buffer_allocator = default_allocator;
+  params.snapshot_blob = blob;
 
   if (constraints != nullptr) {
     ResourceConstraints rc;
@@ -55,6 +60,7 @@ IsolatePtr NewIsolate(IsolateConstraintsPtr constraints) {
   }
 
   Isolate* iso = Isolate::New(params);
+  if (!iso) return nullptr;
   Locker locker(iso);
   Isolate::Scope isolate_scope(iso);
   HandleScope handle_scope(iso);
@@ -65,12 +71,22 @@ IsolatePtr NewIsolate(IsolateConstraintsPtr constraints) {
   iso->AddNearHeapLimitCallback(NearMemoryLimitCallback, iso);
 
   // Create a Context for internal use
-  m_ctx* ctx = new m_ctx;
+  m_ctx* ctx = new m_ctx{};
   ctx->ptr.Reset(iso, Context::New(iso));
   ctx->iso = iso;
   iso->SetData(0, ctx);
 
   return iso;
+}
+
+IsolatePtr NewIsolate(IsolateConstraintsPtr constraints) {
+  return CreateIsolate(constraints, nullptr);
+}
+
+IsolatePtr SnapshotNewIsolate(SnapshotBlobPtr blob, IsolateConstraintsPtr constraints) {
+  // V8 keeps reading the blob after creation (Context::FromSnapshot). The Go
+  // Snapshot keeps it alive until this isolate has been disposed.
+  return CreateIsolate(constraints, &blob->startup);
 }
 
 void IsolatePerformMicrotaskCheckpoint(IsolatePtr iso) {

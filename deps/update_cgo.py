@@ -2,6 +2,8 @@
 import argparse
 import glob
 import os.path
+import subprocess
+import sys
 
 argp = argparse.ArgumentParser()
 argp.add_argument("--root-module", default="github.com/hlvs-apps/v8go")
@@ -121,3 +123,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+    subprocess.run([sys.executable, "scripts/snapshot-identity.py"], check=True)

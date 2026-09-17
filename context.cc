@@ -30,7 +30,7 @@ ContextPtr NewContext(IsolatePtr iso,
   Local<Context> local_ctx = Context::New(iso, nullptr, global_template);
   local_ctx->SetEmbedderData(1, Integer::New(iso, ref));
 
-  m_ctx* ctx = new m_ctx;
+  m_ctx* ctx = new m_ctx{};
   ctx->ptr.Reset(iso, local_ctx);
   ctx->iso = iso;
   return ctx;

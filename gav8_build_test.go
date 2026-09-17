@@ -159,7 +159,7 @@ func (p *prog) pinBytes(b []byte) {
 
 /********** round trip **********/
 
-func TestBuildRoundTrip(t *testing.T) {
+func TestBuildRoundTrip(t *testing.T) { //nolint:tparallel // Subtests share this native isolate and context and must run sequentially.
 	t.Parallel()
 	iso := v8.NewIsolate()
 	defer iso.Dispose()
@@ -335,7 +335,7 @@ func TestBuildRoundTrip(t *testing.T) {
 				p.end()
 			},
 			expr: "Object.keys(v).length + ':' + Object.keys(v).join(',') + ':' + Object.values(v).join(',')",
-			want: "50:" + joinRange("k", 50) + ":" + joinRange("", 50),
+			want: "50:" + joinRange("k") + ":" + joinRange(""),
 		},
 		{
 			name: "mixed array",
@@ -1067,7 +1067,7 @@ func TestBuildRoundTrip(t *testing.T) {
 // entry from all four arrays, and the six leaves after it read all four again,
 // so a leak from any one of them either shifts a value or runs a cursor off the
 // end of its array.
-func TestBuildNullableCursorInvariance(t *testing.T) {
+func TestBuildNullableCursorInvariance(t *testing.T) { //nolint:tparallel // Subtests share this native isolate and context and must run sequentially.
 	t.Parallel()
 	iso := v8.NewIsolate()
 	defer iso.Dispose()
@@ -1167,7 +1167,7 @@ func TestBuildNullableCursorInvariance(t *testing.T) {
 //   - "shifted values" is the round-trip one, over rows that alternate, where a
 //     leak lands on the NEXT row's leaves instead of off the end — a plausible
 //     tree holding the wrong data, which no size check would catch.
-func TestBuildOptionalCursorInvariance(t *testing.T) {
+func TestBuildOptionalCursorInvariance(t *testing.T) { //nolint:tparallel // Subtests share this native isolate and context and must run sequentially.
 	t.Parallel()
 	iso := v8.NewIsolate()
 	defer iso.Dispose()
@@ -1912,7 +1912,7 @@ func TestBuildOptionalOneCrossingOneValue(t *testing.T) {
 // The op buffer is generated, but it is the only thing between a producer bug
 // and an out-of-bounds read of process memory. Every one of these must come
 // back as an error, with no value and nothing retained.
-func TestBuildMalformed(t *testing.T) {
+func TestBuildMalformed(t *testing.T) { //nolint:tparallel // Subtests share this native isolate and context and must run sequentially.
 	t.Parallel()
 	iso := v8.NewIsolate()
 	defer iso.Dispose()
@@ -1993,8 +1993,10 @@ func TestBuildMalformed(t *testing.T) {
 		{
 			name: "OP_OBJ pops past an OP_MARK",
 			p: v8.Payload{
-				Ops: []uint32{v8.OpNull, v8.OpNull, v8.OpMark, v8.OpNull,
-					v8.OpObj, 0, v8.OpEnd},
+				Ops: []uint32{
+					v8.OpNull, v8.OpNull, v8.OpMark, v8.OpNull,
+					v8.OpObj, 0, v8.OpEnd,
+				},
 				Shapes: twoKeys, Spans: keySpans, KeySpans: 2, Buf: []byte("ab"),
 			},
 		},
@@ -2270,8 +2272,10 @@ func TestBuildMalformed(t *testing.T) {
 		{
 			name: "OP_OBJ_OMIT pops past an OP_MARK",
 			p: v8.Payload{
-				Ops: []uint32{v8.OpNull, v8.OpNull, v8.OpMark, v8.OpNull,
-					v8.OpObjOmit, 0, v8.OpEnd},
+				Ops: []uint32{
+					v8.OpNull, v8.OpNull, v8.OpMark, v8.OpNull,
+					v8.OpObjOmit, 0, v8.OpEnd,
+				},
 				Shapes: twoKeys, Spans: keySpans, KeySpans: 2, Buf: []byte("ab"),
 			},
 		},
@@ -2496,7 +2500,7 @@ func TestBuildValueInsideCallback(t *testing.T) {
 	defer pin.Unpin()
 
 	fn := v8.NewFunctionTemplate(iso, func(info *v8.FunctionCallbackInfo) *v8.Value {
-		n := int32(info.Args()[0].Int32())
+		n := info.Args()[0].Int32()
 
 		// A negative count means: go back into JS from here, which comes back
 		// into this callback and builds one level deeper. That is the

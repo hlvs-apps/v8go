@@ -26,7 +26,7 @@ func eval(t *testing.T, ctx *v8.Context, val *v8.Value, expr string) string {
 	return out.String()
 }
 
-func TestBatchScopeRoundTrip(t *testing.T) {
+func TestBatchScopeRoundTrip(t *testing.T) { //nolint:tparallel // Subtests share this native isolate and context and must run sequentially.
 	t.Parallel()
 	iso := v8.NewIsolate()
 	defer iso.Dispose()
@@ -178,7 +178,7 @@ func TestBatchScopeRoundTrip(t *testing.T) {
 				return s.Object(s.Shape(keys), vals)
 			},
 			expr: "Object.keys(v).length + ':' + Object.keys(v).join(',') + ':' + Object.values(v).join(',')",
-			want: "50:" + joinRange("k", 50) + ":" + joinRange("", 50),
+			want: "50:" + joinRange("k") + ":" + joinRange(""),
 		},
 		{
 			name: "array of 1000 uniform objects",
@@ -378,7 +378,7 @@ func TestBatchScopeCloseFrees(t *testing.T) {
 
 // A failed builder must poison the result rather than hand back a tree with a
 // hole in it, and an invalid ref must never crash a consumer of it.
-func TestBatchScopeInvalidRefs(t *testing.T) {
+func TestBatchScopeInvalidRefs(t *testing.T) { //nolint:tparallel // Subtests share this native isolate and context and must run sequentially.
 	t.Parallel()
 	iso := v8.NewIsolate()
 	defer iso.Dispose()
@@ -511,7 +511,7 @@ func benchRows(cols, rows int) ([]string, [][]any) {
 // []map[string]any is several times slower, mostly on sorting map keys — so the
 // baseline the builder is measured against is the hard one, not the easy one.
 func benchJSON(keys []string, rows [][]any) string {
-	var buf []byte
+	var buf []byte //nolint:prealloc // Benchmark intentionally includes incremental encoder buffer growth.
 	buf = append(buf, '[')
 	for r, row := range rows {
 		if r > 0 {
@@ -646,9 +646,9 @@ func BenchmarkJSONMarshalParse(b *testing.B) {
 	}
 }
 
-// joinRange renders "<prefix>0,<prefix>1,..." for n entries.
-func joinRange(prefix string, n int) string {
-	parts := make([]string, n)
+// joinRange renders "<prefix>0,<prefix>1,..." for the 50-entry fixture.
+func joinRange(prefix string) string {
+	parts := make([]string, 50)
 	for i := range parts {
 		parts[i] = prefix + strconv.Itoa(i)
 	}

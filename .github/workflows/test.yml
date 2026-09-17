@@ -22,15 +22,23 @@ jobs:
     name: Tests on ${{ matrix.os }} ${{ matrix.arch }} with Go ${{ matrix.go-version }}
     strategy:
       matrix:
-        os: [darwin, linux]
-        arch: [amd64, arm64]
-        go-version:
-        - stable
         include:
         - os: linux
-          platform: ubuntu-latest
+          arch: amd64
+          platform: ubuntu-24.04
+          go-version: stable
+        - os: linux
+          arch: arm64
+          platform: ubuntu-24.04-arm
+          go-version: stable
         - os: darwin
-          platform: macos-latest
+          arch: amd64
+          platform: macos-15-intel
+          go-version: stable
+        - os: darwin
+          arch: arm64
+          platform: macos-15
+          go-version: stable
     runs-on: ${{ matrix.platform }}
     steps:
     - uses: actions/checkout@v7
@@ -40,6 +48,18 @@ jobs:
     - uses: actions/setup-go@v6
       with:
         go-version: ${{ matrix.go-version }}
+
+    - name: Verify native execution target
+      env:
+        EXPECTED_GOOS: ${{ matrix.os }}
+        EXPECTED_GOARCH: ${{ matrix.arch }}
+      run: |
+        test "$(go env GOOS)" = "$EXPECTED_GOOS"
+        test "$(go env GOARCH)" = "$EXPECTED_GOARCH"
+        test "$(go env GOHOSTARCH)" = "$EXPECTED_GOARCH"
+
+    - name: Verify snapshot native identities
+      run: python3 scripts/snapshot-identity.py --check
 
     - run: make test
 

@@ -26,9 +26,13 @@ func (u *UnboundScript) Run(ctx *Context) (*Value, error) {
 	return valueResult(ctx, rtn)
 }
 
-// Create a code cache from the unbound script.
+// CreateCodeCache creates a code cache from the unbound script. It returns nil
+// if V8 cannot produce a code cache.
 func (u *UnboundScript) CreateCodeCache() *CompilerCachedData {
 	rtn := C.UnboundScriptCreateCodeCache(u.iso.ptr, u.ptr)
+	if rtn == nil {
+		return nil
+	}
 
 	cachedData := &CompilerCachedData{
 		Bytes:    C.GoBytes(unsafe.Pointer(rtn.data), rtn.length),

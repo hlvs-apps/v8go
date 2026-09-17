@@ -511,3 +511,83 @@ contributors at [rogchap/v8go](https://github.com/rogchap/v8go), and carried
 forward by [Sebastian Döll](https://github.com/katallaxie) at
 [katallaxie/v8go](https://github.com/katallaxie/v8go). See [LICENSE](LICENSE)
 for the terms this project is distributed under.
+
+### Trusted startup snapshots
+
+`CreateSnapshot` executes an ordered list of `SnapshotScript` values in a fresh,
+creator-owned isolate. It serializes one additional application context and a
+minimal default context for v8go bookkeeping. It never accepts Go callbacks.
+`CaptureGlobals` retains named own global properties as private snapshot data and
+removes them immediately after each script, before its microtask checkpoint or
+any subsequent script. Captures are indexed in script/name order. `ValidateCaptured` privately calls
+selected captured functions after the script and its microtask checkpoint; an
+exception rejects preparation without exposing a validator to application code.
+Validators must be synchronous; returning a Promise rejects preparation rather
+than allowing an asynchronous failure to go unchecked. An exception thrown
+inside a microtask (for example a Promise `.then` callback) does not fail
+preparation, because V8 does not report it to the caller; record such failures in
+state a validator checks.
+
+```go
+snapshot, err := v8.CreateSnapshot([]v8.SnapshotScript{{
+    Source: `globalThis.counter = 40; globalThis.next = () => ++counter`,
+    Origin: "app.js",
+    CaptureGlobals: []string{"next"},
+}})
+// Check err, then persist snapshot.Bytes() as a trusted build artifact.
+// In another process:
+snapshot, err = v8.ParseSnapshot(artifactBytes)
+iso, err := v8.NewIsolateWithSnapshot(snapshot)
+// Check each error before continuing.
+defer iso.Dispose()
+ctx, err := v8.NewContextFromSnapshot(iso, snapshot.ContextIndex())
+defer ctx.Close()
+next, err := ctx.SnapshotData(0) // one-shot; retain this Value for later calls
+```
+
+A restored context receives a fresh Go registry reference. Runtime callbacks can
+be created with `NewFunctionTemplate(iso, callback).GetFunction(ctx)` and passed
+to a captured JavaScript rebinding function. Snapshot values and callbacks belong
+to that context; close contexts before disposing their isolate. A `Snapshot` can
+be reused across isolates: live isolates restored from it share one native copy
+of the blob, freed when the last of them is disposed. The ordinary `NewIsolate`/`NewContext` APIs retain their existing behavior.
+
+The creator retains a temporary ordinary isolate so the shared read-only heap
+stays sealed at its default contents. Application state is still serialized in
+full in the application context, without promoting it into a custom read-only
+heap; this permits ordinary isolates and different snapshots to coexist with the
+current native archives. The temporary isolate is disposed before returning.
+
+Snapshot creation is synchronous, including microtask draining. Native creation
+is serialized against other creators and new isolate construction because V8
+creators can finalize a shared read-only heap. Ordinary isolate construction can
+proceed concurrently with other ordinary construction; existing isolates keep
+executing during snapshot preparation. Use a helper
+process with a deadline for preparation that may loop indefinitely. Preparation
+policy (forbidding I/O, time/random reads, or runtime-specific state) belongs to
+the application; this generic API does not prove JavaScript purity. Supplied code
+caches must be nonempty and accepted by V8; rejection fails preparation before
+that script runs. `CachedDataVersionTag` is available for independent cache keys;
+`StartupIdentity` includes the stronger native build and flags identity.
+`CreateCodeCache` returns nil if V8 cannot produce a cache.
+
+Only load **trusted build artifacts**. The binary envelope stores a bounded JSON
+metadata header followed by the raw native blob, avoiding base64 decoding during
+startup. Parsing copies the blob so caller-owned bytes cannot change a snapshot.
+The envelope checks version, platform,
+native archive identity, V8 code-cache tag, configured flags, bounds, and a
+SHA-256 digest of the native blob before loading native bytes. The digest covers
+the blob only; the metadata header is validated field by field, not hashed. These checks do not authenticate data or
+make arbitrary V8 snapshots safe. Configure flags before creating/parsing
+artifacts and isolates; do not mutate flags concurrently with these operations.
+A build/flags mismatch returns `SnapshotCompatibilityError` before native loading.
+Snapshots are not portable between native builds or CPU feature configurations.
+The native build workflow regenerates archive identities through
+`deps/update_cgo.py`; after manually replacing archives, run
+`python3 scripts/snapshot-identity.py` and verify with its `--check` option.
+On a GOOS/GOARCH without a native archive identity, `StartupIdentity` reports
+`unmapped-platform` and snapshot creation, parsing and restoration return
+`SnapshotCompatibilityError`. `windows/arm64` has a generated identity but no CI
+lane, so snapshots there are untested.
+Snapshot bindings are tested by the normal package suite, including fresh child
+processes, repeated creation/disposal, capture removal, and callback rebinding.

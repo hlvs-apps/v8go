@@ -17,6 +17,17 @@ func (i *Isolate) GetCallback(ref int) FunctionCallbackWithError {
 // GetContext is exported for testing only.
 var GetContext = getContext
 
+// SnapshotNativeBlobCount is exported for testing only.
+var SnapshotNativeBlobCount = snapshotNativeBlobCount
+
+// SetSnapshotNativeIdentity is exported for testing only. It replaces the
+// native archive identity map and returns a function restoring the original.
+func SetSnapshotNativeIdentity(m map[string]string) (restore func()) {
+	original := snapshotNativeIdentity
+	snapshotNativeIdentity = m
+	return func() { snapshotNativeIdentity = original }
+}
+
 // Ref is exported for testing only.
 func (c *Context) Ref() int {
 	return c.ref

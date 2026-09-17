@@ -9,6 +9,7 @@ package v8go
 import "C"
 
 import (
+	"errors"
 	"sync"
 	"unsafe"
 )
@@ -25,6 +26,7 @@ type Isolate struct {
 
 	null      *Value
 	undefined *Value
+	snapshot  *Snapshot
 }
 
 // HeapStatistics represents V8 isolate heap statistics.
@@ -133,6 +135,9 @@ func (i *Isolate) CompileUnboundScript(
 
 	var cOptions C.CompileOptions
 	if opts.CachedData != nil {
+		if len(opts.CachedData.Bytes) == 0 {
+			return nil, errors.New("v8go: empty code cache")
+		}
 		if opts.Mode != 0 {
 			panic("On CompileOptions, Mode and CachedData can't both be set")
 		}
@@ -184,6 +189,9 @@ func (i *Isolate) Dispose() {
 	}
 	C.IsolateDispose(i.ptr)
 	i.ptr = nil
+	if i.snapshot != nil {
+		i.snapshot.releaseNative()
+	}
 }
 
 // ThrowException schedules an exception to be thrown when returning to
