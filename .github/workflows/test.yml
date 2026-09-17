@@ -45,7 +45,7 @@ jobs:
       with:
         ref: ${{ inputs.sha }}
 
-    - uses: actions/setup-go@v6
+    - uses: actions/setup-go@v7
       with:
         go-version: ${{ matrix.go-version }}
 
@@ -101,7 +101,7 @@ jobs:
       with:
         ref: ${{ inputs.sha }}
 
-    - uses: actions/setup-go@v6
+    - uses: actions/setup-go@v7
       with:
         go-version-file: ./go.mod
 
