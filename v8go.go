@@ -27,6 +27,9 @@ func Version() string {
 // Flags can be reverted using the `--no` prefix equivalent, for example: `--use_strict` vs `--nouse_strict`.
 // Flags will affect all Isolates created, even after creation.
 func SetFlags(flags ...string) {
+	snapshotFlags.Lock()
+	defer snapshotFlags.Unlock()
+	snapshotFlags.values = append(snapshotFlags.values, flags...)
 	cflags := C.CString(strings.Join(flags, " "))
 	C.SetFlags(cflags)
 	C.free(unsafe.Pointer(cflags))
