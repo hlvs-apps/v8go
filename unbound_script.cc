@@ -19,6 +19,7 @@ ScriptCompilerCachedData* UnboundScriptCreateCodeCache(
   ScriptCompiler::CachedData* cached_data =
       ScriptCompiler::CreateCodeCache(unbound_script);
 
+  if (!cached_data) return nullptr;
   ScriptCompilerCachedData* cd = new ScriptCompilerCachedData;
   cd->ptr = cached_data;
   cd->data = cached_data->data;
