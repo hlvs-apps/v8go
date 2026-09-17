@@ -197,7 +197,7 @@ jobs:
         ref: ${{ inputs.sha }}
 
     - name: ccache
-      uses: actions/cache@v4
+      uses: actions/cache@v6
       with:
         path: ${{ github.workspace }}/.ccache
         # run_id only makes the save key unique; restore always falls back to
@@ -297,7 +297,7 @@ jobs:
         ref: ${{ inputs.sha }}
 
     - name: ccache
-      uses: actions/cache@v4
+      uses: actions/cache@v6
       with:
         path: ${{ github.workspace }}/.ccache
         key: libv8:ccache:windows:arm64:${{ github.run_id }}
